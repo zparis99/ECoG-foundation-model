@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=medarc
-#SBATCH --partition=h80
+#SBATCH --partition=g40x
 #SBATCH --job-name=openneuro
 #SBATCH --nodes=1              
 #SBATCH --ntasks-per-node=1     # should = number of gpus
@@ -12,8 +12,8 @@
 
 source ~/.bashrc
 
-cd /fsx/proj-fmri/paulscotti/fMRI-foundation-model/dataset_creation
+cd /fsx/proj-fmri/yourname/fMRI-foundation-model/dataset_creation
 
-jupyter nbconvert webdataset_creation_no_afni.ipynb --to python
+jupyter nbconvert openneuro_minimal.ipynb --to python
 
-srun python -u webdataset_creation_no_afni.py
+srun python -u openneuro_minimal.py
