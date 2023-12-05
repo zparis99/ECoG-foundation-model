@@ -25,9 +25,9 @@ def reshape_to_2d(tensor):
     assert tensor.ndim == 4
     return rearrange(tensor, 'b h w c -> (b h) (c w)')
 
-def reshape_to_original(tensor_2d, tr=4, h=64, w=64, c=48):
+def reshape_to_original(tensor_2d, h=64, w=64, c=48):
     # print(tensor_2d.shape) # torch.Size([1, 256, 3072])
-    return rearrange(tensor_2d, '(tr h) (c w) -> tr h w c', tr=tr, h=h, w=w, c=c)
+    return rearrange(tensor_2d, '(tr h) (c w) -> tr h w c', h=h, w=w, c=c)
 
 
 def plot_numpy_nii(image):
@@ -43,8 +43,16 @@ class DataPrepper:
     def __call__(self, sample):
         func, minmax, meansd = sample
         min_, max_, min_meansd, max_meansd = minmax
-        func = torch.Tensor(reshape_to_original(func))
-        meansd = torch.Tensor(reshape_to_original(meansd,tr=2))
+        reshaped_func = reshape_to_original(func)
+        
+        if len(reshaped_func) == 4:
+            timepoints = np.arange(4)
+        else:
+            start_timepoint = np.random.choice(np.arange(len(reshaped_func)-4))
+            timepoints = np.arange(start_timepoint,start_timepoint+4)
+        
+        func = torch.Tensor(reshaped_func[timepoints])
+        meansd = torch.Tensor(reshape_to_original(meansd))
         return func, meansd
     
     
