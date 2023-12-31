@@ -21,6 +21,7 @@ from einops.layers.torch import Rearrange
 
 from rope import RotaryPositionalEmbeddings4D
 
+
 def posemb_sincos_4d(patches, temperature=10000, dtype=torch.float32):
     _, f, d, h, w, dim, device, dtype = *patches.shape, patches.device, patches.dtype
 
@@ -62,12 +63,12 @@ class FeedForward(nn.Module):
 
 class Attention(nn.Module):
     def __init__(
-            self, 
-            dim: int, 
-            heads: int = 8, 
-            dim_head: int = 64, 
-            use_rope: bool = False,
-            cls_token: bool = False
+        self,
+        dim: int,
+        heads: int = 8,
+        dim_head: int = 64,
+        use_rope: bool = False,
+        cls_token: bool = False,
     ):
         super().__init__()
         inner_dim = dim_head * heads
@@ -83,10 +84,10 @@ class Attention(nn.Module):
         self.to_out = nn.Linear(inner_dim, dim, bias=False)
 
     def forward(
-            self, 
-            x: torch.Tensor, 
-            pos_embed: Optional[nn.Module],
-            mask: Optional[torch.Tensor] = None
+        self,
+        x: torch.Tensor,
+        pos_embed: Optional[nn.Module],
+        mask: Optional[torch.Tensor] = None,
     ):
         x = self.norm(x)
 
@@ -94,7 +95,9 @@ class Attention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.heads), qkv)
         if self.use_rope:
             if pos_embed is None:
-                raise ValueError("For RoPE embeddings `pos_embed` should be passed to the Attention forward.")
+                raise ValueError(
+                    "For RoPE embeddings `pos_embed` should be passed to the Attention forward."
+                )
             # apply RoPE other than CLS token if it's included.
             if self.cls_token:
                 q_cls = q[:, :, 0, :]
@@ -107,7 +110,6 @@ class Attention(nn.Module):
                 q = torch.cat([q_cls, q], dim=2)
                 k = torch.cat([k_cls, k], dim=2)
 
-
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
 
         attn = self.attend(dots)
@@ -119,18 +121,18 @@ class Attention(nn.Module):
 
 class Transformer(nn.Module):
     def __init__(
-            self, 
-            dim: int, 
-            depth: int, 
-            heads: int, 
-            dim_head: int, 
-            mlp_dim: int, 
-            use_rope: bool = False,
-            grid_height: Optional[int] = None,
-            grid_width: Optional[int] = None,
-            grid_depth: Optional[int] = None,
-            grid_time: Optional[int] = None
-        ):
+        self,
+        dim: int,
+        depth: int,
+        heads: int,
+        dim_head: int,
+        mlp_dim: int,
+        use_rope: bool = False,
+        grid_height: Optional[int] = None,
+        grid_width: Optional[int] = None,
+        grid_depth: Optional[int] = None,
+        grid_time: Optional[int] = None,
+    ):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.layers = nn.ModuleList([])
@@ -138,7 +140,9 @@ class Transformer(nn.Module):
             self.layers.append(
                 nn.ModuleList(
                     [
-                        Attention(dim, heads=heads, dim_head=dim_head, use_rope=use_rope),
+                        Attention(
+                            dim, heads=heads, dim_head=dim_head, use_rope=use_rope
+                        ),
                         FeedForward(dim, mlp_dim),
                     ]
                 )
@@ -147,16 +151,21 @@ class Transformer(nn.Module):
         self.use_rope = use_rope
         if self.use_rope:
             self.rope_pos_emb = RotaryPositionalEmbeddings4D(
-                d=dim_head, 
-                grid_depth=grid_depth, 
-                grid_height=grid_height, 
-                grid_width=grid_width, 
-                grid_time=grid_time
+                d=dim_head,
+                grid_depth=grid_depth,
+                grid_height=grid_height,
+                grid_width=grid_width,
+                grid_time=grid_time,
             )
 
-    def forward(self, x, mask: Optional[torch.Tensor]=None):
+    def forward(self, x, mask: Optional[torch.Tensor] = None):
         for attn, ff in self.layers:
-            x = attn(x, pos_embed=self.rope_pos_emb if self.use_rope else None, mask=mask) + x
+            x = (
+                attn(
+                    x, pos_embed=self.rope_pos_emb if self.use_rope else None, mask=mask
+                )
+                + x
+            )
             x = ff(x) + x
         return self.norm(x)
 
@@ -232,20 +241,28 @@ class SimpleViT(nn.Module):
         )
 
         self.encoder_transformer = Transformer(
-            dim, depth, heads, dim_head, 
-            mlp_dim, use_rope=use_rope_emb, 
-            grid_time=frames//frame_patch_size,
-            grid_depth=image_depth//patch_depth,
-            grid_height=image_height//patch_height,
-            grid_width=image_width//patch_width
+            dim,
+            depth,
+            heads,
+            dim_head,
+            mlp_dim,
+            use_rope=use_rope_emb,
+            grid_time=frames // frame_patch_size,
+            grid_depth=image_depth // patch_depth,
+            grid_height=image_height // patch_height,
+            grid_width=image_width // patch_width,
         )
         self.decoder_transformer = Transformer(
-            dim, depth, heads, dim_head, 
-            mlp_dim, use_rope=use_rope_emb, 
-            grid_time=frames//frame_patch_size,
-            grid_depth=image_depth//patch_depth,
-            grid_height=image_height//patch_height,
-            grid_width=image_width//patch_width
+            dim,
+            depth,
+            heads,
+            dim_head,
+            mlp_dim,
+            use_rope=use_rope_emb,
+            grid_time=frames // frame_patch_size,
+            grid_depth=image_depth // patch_depth,
+            grid_height=image_height // patch_height,
+            grid_width=image_width // patch_width,
         )
 
         self.use_rope_emb = use_rope_emb
@@ -278,7 +295,7 @@ class SimpleViT(nn.Module):
             x = rearrange(x, "b ... d -> b (...) d")
             if verbose:
                 print(x.shape)
-            
+
             if not self.use_rope_emb:
                 if verbose:
                     print("pe", self.posemb_sincos_4d.shape)
@@ -288,14 +305,16 @@ class SimpleViT(nn.Module):
             x = x[:, encoder_mask]
             if verbose:
                 print("masked", x.shape)
-            x = self.encoder_transformer(x, mask=encoder_mask if self.use_rope_emb else None)
+            x = self.encoder_transformer(
+                x, mask=encoder_mask if self.use_rope_emb else None
+            )
             if verbose:
                 print(x.shape)
         else:  # DECODER
             if verbose:
                 print(x.shape)
             x = self.encoder_to_decoder(x)
-            mask=None
+            mask = None
             if not self.use_rope_emb:
                 if verbose:
                     print(x.shape)
@@ -316,7 +335,9 @@ class SimpleViT(nn.Module):
                     dim=1,
                 )
             else:
-                mask = torch.cat((torch.where(encoder_mask)[0], torch.where(decoder_mask)[0]))
+                mask = torch.cat(
+                    (torch.where(encoder_mask)[0], torch.where(decoder_mask)[0])
+                )
                 # No abs positional embeddings for RoPE
                 x = torch.cat([x, self.mask_token.repeat(len(x), 1, 1)], dim=1)
             if verbose:
