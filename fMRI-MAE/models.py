@@ -104,10 +104,7 @@ class Attention(nn.Module):
                 k_cls = k[:, :, :1, :]
                 q = q[:, :, 1:, :]
                 k = k[:, :, 1:, :]
-            try:
-                q = pos_embed(q, mask=mask)
-            except:
-                breakpoint()
+            q = pos_embed(q, mask=mask)
             k = pos_embed(k, mask=mask)
             if self.cls_token:
                 q = torch.cat([q_cls, q], dim=2)
