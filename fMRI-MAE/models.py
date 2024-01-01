@@ -100,11 +100,14 @@ class Attention(nn.Module):
                 )
             # apply RoPE other than CLS token if it's included.
             if self.cls_token:
-                q_cls = q[:, :, 0, :]
-                k_cls = k[:, :, 0, :]
+                q_cls = q[:, :, :1, :]
+                k_cls = k[:, :, :1, :]
                 q = q[:, :, 1:, :]
                 k = k[:, :, 1:, :]
-            q = pos_embed(q, mask=mask)
+            try:
+                q = pos_embed(q, mask=mask)
+            except:
+                breakpoint()
             k = pos_embed(k, mask=mask)
             if self.cls_token:
                 q = torch.cat([q_cls, q], dim=2)
@@ -132,6 +135,7 @@ class Transformer(nn.Module):
         grid_width: Optional[int] = None,
         grid_depth: Optional[int] = None,
         grid_time: Optional[int] = None,
+        cls_token: bool = False,
     ):
         super().__init__()
         self.norm = nn.LayerNorm(dim)
@@ -141,7 +145,7 @@ class Transformer(nn.Module):
                 nn.ModuleList(
                     [
                         Attention(
-                            dim, heads=heads, dim_head=dim_head, use_rope=use_rope
+                            dim, heads=heads, dim_head=dim_head, use_rope=use_rope, cls_token=cls_token
                         ),
                         FeedForward(dim, mlp_dim),
                     ]
@@ -186,7 +190,8 @@ class SimpleViT(nn.Module):
         num_decoder_patches,
         channels,
         dim_head=64,
-        use_rope_emb: bool = False
+        use_rope_emb: bool = False,
+        use_cls_token: bool = False
     ):
         super().__init__()
         image_depth, image_height, image_width = image_size
@@ -251,6 +256,7 @@ class SimpleViT(nn.Module):
             grid_depth=image_depth // patch_depth,
             grid_height=image_height // patch_height,
             grid_width=image_width // patch_width,
+            cls_token=use_cls_token
         )
         self.decoder_transformer = Transformer(
             dim,
@@ -263,6 +269,7 @@ class SimpleViT(nn.Module):
             grid_depth=image_depth // patch_depth,
             grid_height=image_height // patch_height,
             grid_width=image_width // patch_width,
+            cls_token=use_cls_token
         )
 
         self.use_rope_emb = use_rope_emb
@@ -280,6 +287,10 @@ class SimpleViT(nn.Module):
 
         self.encoder_to_decoder = nn.Linear(dim, mlp_dim, bias=False)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, mlp_dim))
+        # cls token
+        self.use_cls_token = use_cls_token
+        if use_cls_token:
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, mlp_dim))
         self.decoder_proj = nn.Sequential(
             nn.LayerNorm(mlp_dim), nn.GELU(), nn.Linear(mlp_dim, mlp_dim)
         )
@@ -303,6 +314,9 @@ class SimpleViT(nn.Module):
             if verbose:
                 print("x", x.shape)
             x = x[:, encoder_mask]
+            if self.use_cls_token:
+                cls_tokens = self.cls_token.expand(len(x), -1, -1)
+                x = torch.cat((cls_tokens, x), dim=1)
             if verbose:
                 print("masked", x.shape)
             x = self.encoder_transformer(
@@ -328,19 +342,24 @@ class SimpleViT(nn.Module):
                     print("pos_emd_encoder", pos_emd_encoder.shape)
                 if verbose:
                     print("pos_emd_decoder", pos_emd_decoder.shape)
+                if self.use_cls_token:
+                    cls_tokens = x[:, :1, :]
+                    x = x[:, 1:, :]
                 x = torch.cat(
                     [
                         x + pos_emd_encoder,
-                        self.mask_token.repeat(B, N, 1) + pos_emd_decoder
+                        self.mask_token.repeat(B, N-1 if self.use_cls_token else N, 1) + pos_emd_decoder
                     ],
                     dim=1,
                 )
+                if self.use_cls_token:
+                    x = torch.cat([cls_tokens, x], dim=1)
             else:
                 mask = torch.cat(
                     (torch.where(encoder_mask)[0], torch.where(decoder_mask)[0])
                 )
                 # No abs positional embeddings for RoPE
-                x = torch.cat([x, self.mask_token.repeat(B, N, 1)], dim=1)
+                x = torch.cat([x, self.mask_token.repeat(B, N-1 if self.use_cls_token else N, 1)], dim=1)
             if verbose:
                 print("x_concat", x.shape)
             x = self.decoder_transformer(x, mask=mask)
