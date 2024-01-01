@@ -1,6 +1,7 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
-from typing import Optional
 
 
 class RotaryPositionalEmbeddings4D(nn.Module):
@@ -40,7 +41,6 @@ class RotaryPositionalEmbeddings4D(nn.Module):
         if self.cos_cached is not None and x.shape[1] <= self.cos_cached.shape[1]:
             # if cache is already built
             return
-        seq_len = x.shape[1]
         # get the positions
         grid_h = torch.arange(self.grid_height, dtype=torch.float32)
         grid_w = torch.arange(self.grid_width, dtype=torch.float32)
@@ -79,7 +79,8 @@ class RotaryPositionalEmbeddings4D(nn.Module):
         Args:
         -----
         x: query or key vector
-        mask: boolean vector of length sequence length. True for the non-masked positions.
+        mask: boolean vector of length sequence length.
+        True for the non-masked positions.
         """
         self._build_cache(x)
         x_rope, x_pass = x[..., : self.d], x[..., self.d :]

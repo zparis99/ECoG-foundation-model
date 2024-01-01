@@ -1,29 +1,15 @@
-import os
-import sys
-import json
-import argparse
-import numpy as np
-import copy
-import math
 from typing import Optional
-import time
-import random
-from tqdm import tqdm
-import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import transforms
 from einops import rearrange
 from einops.layers.torch import Rearrange
-
-
 from rope import RotaryPositionalEmbeddings4D
 
 
 def posemb_sincos_4d(patches, temperature=10000, dtype=torch.float32):
-    _, f, d, h, w, dim, device, dtype = *patches.shape, patches.device, patches.dtype
+    _, f, d, h, w, dim, device, dtype = (*patches.shape, patches.device, patches.dtype)
 
     z, y, x, t = torch.meshgrid(
         torch.arange(f, device=device),
@@ -96,7 +82,8 @@ class Attention(nn.Module):
         if self.use_rope:
             if pos_embed is None:
                 raise ValueError(
-                    "For RoPE embeddings `pos_embed` should be passed to the Attention forward."
+                    "For RoPE embeddings `pos_embed` should be \
+                    passed to the Attention forward."
                 )
             # apply RoPE other than CLS token if it's included.
             if self.cls_token:
@@ -142,7 +129,11 @@ class Transformer(nn.Module):
                 nn.ModuleList(
                     [
                         Attention(
-                            dim, heads=heads, dim_head=dim_head, use_rope=use_rope, cls_token=cls_token
+                            dim,
+                            heads=heads,
+                            dim_head=dim_head,
+                            use_rope=use_rope,
+                            cls_token=cls_token,
                         ),
                         FeedForward(dim, mlp_dim),
                     ]
@@ -204,12 +195,6 @@ class SimpleViT(nn.Module):
             frames % frame_patch_size == 0
         ), "Frames must be divisible by the frame patch size"
 
-        num_patches = (
-            (image_depth // patch_depth)
-            * (image_height // patch_height)
-            * (image_width // patch_width)
-            * (frames // frame_patch_size)
-        )
         patch_dim = (
             channels * patch_depth * patch_height * patch_width * frame_patch_size
         )
@@ -253,7 +238,7 @@ class SimpleViT(nn.Module):
             grid_depth=image_depth // patch_depth,
             grid_height=image_height // patch_height,
             grid_width=image_width // patch_width,
-            cls_token=use_cls_token
+            cls_token=use_cls_token,
         )
         self.decoder_transformer = Transformer(
             dim,
@@ -266,7 +251,7 @@ class SimpleViT(nn.Module):
             grid_depth=image_depth // patch_depth,
             grid_height=image_height // patch_height,
             grid_width=image_width // patch_width,
-            cls_token=use_cls_token
+            cls_token=use_cls_token,
         )
 
         self.use_rope_emb = use_rope_emb
@@ -345,7 +330,8 @@ class SimpleViT(nn.Module):
                 x = torch.cat(
                     [
                         x + pos_emd_encoder,
-                        self.mask_token.repeat(B, N-1 if self.use_cls_token else N, 1) + pos_emd_decoder
+                        self.mask_token.repeat(B, N - 1 if self.use_cls_token else N, 1)
+                        + pos_emd_decoder,
                     ],
                     dim=1,
                 )
@@ -356,7 +342,15 @@ class SimpleViT(nn.Module):
                     (torch.where(encoder_mask)[0], torch.where(decoder_mask)[0])
                 )
                 # No abs positional embeddings for RoPE
-                x = torch.cat([x, self.mask_token.repeat(B, N-1 if self.use_cls_token else N, 1)], dim=1)
+                x = torch.cat(
+                    [
+                        x,
+                        self.mask_token.repeat(
+                            B, N - 1 if self.use_cls_token else N, 1
+                        ),
+                    ],
+                    dim=1,
+                )
             if verbose:
                 print("x_concat", x.shape)
             x = self.decoder_transformer(x, mask=mask)
