@@ -279,7 +279,7 @@ class SimpleViT(nn.Module):
             )
 
         self.encoder_to_decoder = nn.Linear(dim, mlp_dim, bias=False)
-        self.mask_token = nn.Parameter(torch.zeros(1, num_decoder_patches, mlp_dim))
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, mlp_dim))
         self.decoder_proj = nn.Sequential(
             nn.LayerNorm(mlp_dim), nn.GELU(), nn.Linear(mlp_dim, mlp_dim)
         )
@@ -314,6 +314,7 @@ class SimpleViT(nn.Module):
             if verbose:
                 print(x.shape)
             x = self.encoder_to_decoder(x)
+            B, N, _ = x.shape
             mask = None
             if not self.use_rope_emb:
                 if verbose:
@@ -330,7 +331,7 @@ class SimpleViT(nn.Module):
                 x = torch.cat(
                     [
                         x + pos_emd_encoder,
-                        (self.mask_token + pos_emd_decoder).repeat(len(x), 1, 1),
+                        self.mask_token.repeat(B, N, 1) + pos_emd_decoder
                     ],
                     dim=1,
                 )
@@ -339,7 +340,7 @@ class SimpleViT(nn.Module):
                     (torch.where(encoder_mask)[0], torch.where(decoder_mask)[0])
                 )
                 # No abs positional embeddings for RoPE
-                x = torch.cat([x, self.mask_token.repeat(len(x), 1, 1)], dim=1)
+                x = torch.cat([x, self.mask_token.repeat(B, N, 1)], dim=1)
             if verbose:
                 print("x_concat", x.shape)
             x = self.decoder_transformer(x, mask=mask)
