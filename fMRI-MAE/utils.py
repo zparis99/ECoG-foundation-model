@@ -7,6 +7,7 @@ from nilearn import plotting
 from PIL import Image
 from skimage import filters
 from torchvision import transforms
+import nibabel as nib
 
 
 def is_interactive():
