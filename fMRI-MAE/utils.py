@@ -1,14 +1,13 @@
+from io import BytesIO
+
 import numpy as np
 import torch
-import torch.nn as nn
-from torchvision import transforms
-from PIL import Image
-from io import BytesIO
-from nilearn import plotting
 from einops import rearrange
-import matplotlib.pyplot as plt
-import torchio as tio
+from nilearn import plotting
+from PIL import Image
 from skimage import filters
+from torchvision import transforms
+import nibabel as nib
 
 
 def is_interactive():
@@ -40,7 +39,7 @@ def reshape_to_original(tensor_2d, h=64, w=64, c=48):
 def plot_numpy_nii(image):
     while image.ndim > 3:
         image = image[0]
-    nii = nib.Nifti1Image(image.astype(np.float32), np.eye(4))
+    nii = nib.Nifti1Image(image.astype(np.float32), np.eye(4))  # noqa
     plotting.plot_epi(nii, cmap="gray")
 
 
