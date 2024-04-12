@@ -1,5 +1,6 @@
 from io import BytesIO
 
+import nibabel as nib
 import numpy as np
 import torch
 from einops import rearrange
@@ -7,7 +8,6 @@ from nilearn import plotting
 from PIL import Image
 from skimage import filters
 from torchvision import transforms
-import nibabel as nib
 
 
 def is_interactive():

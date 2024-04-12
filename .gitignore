@@ -1,0 +1,12 @@
+__pycache__
+
+fmri
+
+dataset/*
+
+*.ipynb
+*.ckpt
+
+logs/*
+results/*
+utils/*

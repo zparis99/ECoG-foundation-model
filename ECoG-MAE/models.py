@@ -195,25 +195,48 @@ class SimpleViT(nn.Module):
             frames % frame_patch_size == 0
         ), "Frames must be divisible by the frame patch size"
 
-        patch_dim = (
+        self.patch_dim = (
             channels * patch_depth * patch_height * patch_width * frame_patch_size
         )
 
+        # b = batch
+        # c = channels (frequency bands)
+        # f * pf = frames (f = n frame patches)
+        # d * pd = depth (d = n depth patches)
+        # h * ph = height (h = n height patches)
+        # w * pw = width (w = n width patches)
         self.patchify = Rearrange(
             "b c (f pf) (d pd) (h ph) (w pw) -> b f d h w (pd ph pw pf c)",
-            pd=patch_depth,
-            ph=patch_height,
-            pw=patch_width,
-            pf=frame_patch_size,
+            # 1 1 40 1 8 8 - > 1 (10 1 8 8) 4
+            # 1
+            pd=patch_depth,  # 1
+            ph=patch_height,  # 1
+            pw=patch_width,  # 1
+            pf=frame_patch_size,  # 4
         )
+
+        # self.unpatchify = nn.Sequential(
+        #     Rearrange(
+        #         "b (f d h w) (pd ph pw pf c) -> b f d h w (pd ph pw pf c)",
+        #         c=channels,
+        #         d=image_depth,
+        #         h=image_height,
+        #         w=image_width,
+        #         pd=patch_depth,
+        #         ph=patch_height,
+        #         pw=patch_width,
+        #         pf=frame_patch_size,
+        #     )
+        # )
 
         self.unpatchify = nn.Sequential(
             Rearrange(
-                "b (f d h w) (pd ph pw pf c) -> b f d h w (pd ph pw pf c)",
+                "b (f d h w) (pd ph pw pf c) -> b c (f pf) (d pd) (h ph) (w pw)",
                 c=channels,
-                d=image_depth,
-                h=image_height,
-                w=image_width,
+                d=int(image_depth / patch_depth),
+                h=int(image_height / patch_height),
+                w=int(image_width / patch_width),
+                f=int(frames / frame_patch_size),
                 pd=patch_depth,
                 ph=patch_height,
                 pw=patch_width,
@@ -222,8 +245,8 @@ class SimpleViT(nn.Module):
         )
 
         self.patch_to_emb = nn.Sequential(
-            nn.LayerNorm(patch_dim),
-            nn.Linear(patch_dim, dim),
+            nn.LayerNorm(self.patch_dim),
+            nn.Linear(self.patch_dim, dim),
             nn.LayerNorm(dim),
         )
 
@@ -259,7 +282,7 @@ class SimpleViT(nn.Module):
             self.posemb_sincos_4d = posemb_sincos_4d(
                 torch.zeros(
                     1,
-                    frames,
+                    frames // frame_patch_size,
                     image_depth // patch_depth,
                     image_height // patch_height,
                     image_width // patch_width,
@@ -274,7 +297,7 @@ class SimpleViT(nn.Module):
         if use_cls_token:
             self.cls_token = nn.Parameter(torch.zeros(1, 1, mlp_dim))
         self.decoder_proj = nn.Sequential(
-            nn.LayerNorm(mlp_dim), nn.GELU(), nn.Linear(mlp_dim, mlp_dim)
+            nn.LayerNorm(mlp_dim), nn.GELU(), nn.Linear(mlp_dim, self.patch_dim)
         )
 
     def forward(self, x, encoder_mask=None, decoder_mask=None, verbose=False):
@@ -310,7 +333,8 @@ class SimpleViT(nn.Module):
             if verbose:
                 print(x.shape)
             x = self.encoder_to_decoder(x)
-            B, N, _ = x.shape
+            B, _, _ = x.shape
+            N = len(decoder_mask[decoder_mask == True])
             mask = None
             if not self.use_rope_emb:
                 if verbose:
