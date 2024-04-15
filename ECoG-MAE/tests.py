@@ -1,7 +1,20 @@
+#TODO implement precise error messages
+
 import time as t
 import torch
 
 def test_dl(args,train_dl,test_dl):
+
+    """
+    Tests if dataloader works as intended
+
+    Args: 
+        args: input arguments
+        train_dl: dataloader object
+        tets_dl dataloader object
+        
+    Returns:
+    """
 
     # Test dataloader
     if args.debug:
@@ -36,6 +49,18 @@ def test_dl(args,train_dl,test_dl):
 
 
 def test_model(args,device,model,num_patches):
+
+    """
+    Tests if model works as intended
+
+    Args: 
+        args: input arguments
+        device: 
+        model: 
+        num_patches: number of patches in which the input data is segmented
+        
+    Returns:
+    """
 
     print('Testing model')
 

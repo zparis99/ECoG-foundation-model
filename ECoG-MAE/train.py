@@ -1,25 +1,37 @@
+#TODO check if correlation is calculated correctly, implement correlation in a separate 'metrics' module
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import time as t
+import os
 import torch
 import torch.nn as nn
 from einops import rearrange
 from tqdm import tqdm
 
 
-def train_model(
-    args,
-    model,
-    train_dl,
-    test_dl,
-    num_patches,
-    optimizer,
-    accelerator,
-    device,
-    data_type,
-    local_rank,
-):
+def train_model(args, device, model, train_dl, test_dl, num_patches, optimizer, accelerator, data_type, local_rank):
+    
+    """
+    Runs model training
+
+    Args: 
+        args: input arguments
+        device: the gpu to be used for model training
+        model: an untrained model instance with randomly initialized parameters 
+        train_dl: dataloader instance for train split
+        test_dl: dataloader instance for test split
+        num_patches: number of patches in which the input data is segmented
+        optimizer: Adam optimizer instance - https://www.analyticsvidhya.com/blog/2023/12/adam-optimizer/ 
+        accelerator: an accelerator instance - https://huggingface.co/docs/accelerate/en/index
+        data_type: the data type to be used, we use "fp16" mixed precision - https://towardsdatascience.com/understanding-mixed-precision-training-4b246679c7c4
+        local_rank: the local rank environment variable (only needed for multi-gpu training)
+        
+    Returns:
+        model: model instance with updated parameters after training
+    """
+        
     ### class token config ###
     use_cls_token = args.use_cls_token
 
@@ -146,7 +158,7 @@ def train_model(
                 train_corr = pd.concat([train_corr, new_train_corr])
 
                 train_corr.to_csv(
-                    f"/scratch/gpfs/ln1144/ECoG-foundation-model/results/{args.job_name}_train_corr.csv",
+                    os.path.dirname(os.getcwd()) + f"/results/{args.job_name}_train_corr.csv",
                     index=False,
                 )
 
@@ -238,7 +250,7 @@ def train_model(
                 test_corr = pd.concat([test_corr, new_test_corr])
 
                 test_corr.to_csv(
-                    f"/scratch/gpfs/ln1144/ECoG-foundation-model/results/{args.job_name}_test_corr.csv",
+                    os.path.dirname(os.getcwd()) + f"/results/{args.job_name}_test_corr.csv",
                     index=False,
                 )
 
@@ -257,7 +269,7 @@ def train_model(
         plt.title("Training re-construction losses")
         # plt.show()
         plt.savefig(
-            f"/scratch/gpfs/ln1144/ECoG-foundation-model/results/{args.job_name}_training_loss.png"
+             os.path.dirname(os.getcwd()) + f"/results/{args.job_name}_training_loss.png"
         )
 
         if use_contrastive_loss:
@@ -272,7 +284,7 @@ def train_model(
         # plt.show()
 
         plt.savefig(
-            f"/scratch/gpfs/ln1144/ECoG-foundation-model/results/{args.job_name}_test_loss.png"
+             os.path.dirname(os.getcwd()) + f"/results/{args.job_name}_test_loss.png"
         )
 
     return model

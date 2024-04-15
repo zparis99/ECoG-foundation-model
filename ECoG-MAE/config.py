@@ -1,3 +1,5 @@
+# TODO implement learning rate scheduler for better performance - initially Paul had implemented one, but we are using a fixed LR for now ...
+
 import os
 import torch
 from accelerate import Accelerator, DeepSpeedPlugin
@@ -13,7 +15,10 @@ def system_setup():
     Args:
         
     Returns:
-        An accelerator object, device spec, data_type spec, the local rank environment variable
+        accelerator: an accelerator instance - https://huggingface.co/docs/accelerate/en/index
+        device: the gpu to be used for model training
+        data_type: the data type to be used, we use "fp16" mixed precision - https://towardsdatascience.com/understanding-mixed-precision-training-4b246679c7c4
+        local_rank: the local rank environment variable (only needed for multi-gpu training)
     """
     
     # tf32 data type is faster than standard float32
@@ -41,11 +46,23 @@ def system_setup():
 
 def model_setup(args, device):
 
+    """
+    Sets up model config
+
+    Args:
+        args: input arguments
+        device: cuda device
+        
+    Returns:
+        model: an untrained model instance with randomly initialized parameters 
+        optimizer: an Adam optimizer instance - https://www.analyticsvidhya.com/blog/2023/12/adam-optimizer/ 
+        num_patches: the number of patches in which the input data is segmented
+    """
+
     ### class token config ###
     use_cls_token = args.use_cls_token
 
     ### Loss Config ###
-    # Are we planning on using contrastive loss?
     use_contrastive_loss = args.use_contrastive_loss
     constrastive_loss_weight = 1.0
     use_cls_token = (
