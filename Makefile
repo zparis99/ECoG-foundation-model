@@ -23,7 +23,7 @@ USE_CLS_TOKEN = True
 JOB_NAME = "ds-$(DATA_SIZE)-bs-$(BATCH_SIZE)-fs-$(NEW_FS)-sl-$(SAMPLE_LENGTH)-ps-$(PATCH_SIZE_STR)-fps-$(FRAME_PATCH_SIZE)-dmr-$(DECODER_MASK_RATIO)-b-$(BANDS_STR)-ne-$(NUM_EPOCHS)"
 CMD = sbatch --job-name=$(JOB_NAME) submit.sh
 
-run-model-training:
+model-train:
 	mkdir -p logs
 	$(CMD) ECoG-MAE/main.py \
 		--job-name $(JOB_NAME) \
