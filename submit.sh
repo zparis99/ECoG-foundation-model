@@ -9,7 +9,7 @@
 #SBATCH -e './logs/%x.err'
 
 module purge
-module load anaconda3/2021.11
+module load anaconda3/2024.2
 source /scratch/gpfs/ln1144/ECoG-foundation-model/ecog/bin/activate
 
 echo 'Requester:' $USER 'Node:' $HOSTNAME

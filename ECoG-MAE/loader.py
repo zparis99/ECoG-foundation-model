@@ -39,6 +39,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         # here we define the grid - since for patient 798 grid electrodes are G1 - G64
         grid = np.linspace(1, 64, 64).astype(int)
 
+        # not all samples are 2 secs #TODO
         n_samples = int(2 * self.fs)
         n_new_samples = int(2 * self.new_fs)
 
@@ -73,7 +74,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
                 norm_sig = np.insert(norm_sig, i, np.zeros((1, n_samples)), axis=0)
 
         # delete items that were shifted upwards
-        norm_sig = norm_sig[:64, :]
+        norm_sig = norm_sig[:64, :] 
 
         # extract frequency bands
         nyq = 0.5 * self.fs
@@ -82,6 +83,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         for i in range(0, len(self.bands)):
             lowcut = self.bands[i][0]
             highcut = self.bands[i][1]
+            # divide by self.fs instead? #TODO
             low = lowcut / nyq
             high = highcut / nyq
 
@@ -93,8 +95,13 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         # compute power envelope
         envelope = np.abs(scipy.signal.hilbert(filtered, axis=2))
 
+        # look at power spectrum instead #TODO
+
+        # decimate before - low pass filter if new_fs == 20 then < 10 Hz
         # resample
         resampled = scipy.signal.resample(envelope, n_new_samples, axis=2)
+
+        # try smoothing window averaging instead #TODO
 
         # rearrange into shape c*t*d*h*w, where
         # c = freq bands, 

@@ -15,6 +15,8 @@ BANDS_STR = all
 NUM_EPOCHS = 10
 JOB_NAME = "ds-$(DATA_SIZE)-bs-$(BATCH_SIZE)-fs-$(NEW_FS)-sl-$(SAMPLE_LENGTH)-ps-$(PATCH_SIZE_STR)-fps-$(FRAME_PATCH_SIZE)-dmr-$(DECODER_MASK_RATIO)-b-$(BANDS_STR)-ne-$(NUM_EPOCHS)"
 CMD = sbatch --job-name=$(JOB_NAME) submit.sh
+# to debug, request interactive gpu node via salloc and select this option:
+# CMD = python 3.11
 
 # for commands debug, use-contrastive-loss, use-cls-token: add to arguments = True, leave out = False
 # --debug
