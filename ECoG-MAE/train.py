@@ -1,4 +1,4 @@
-#TODO check if correlation is calculated correctly, implement correlation in a separate 'metrics' module
+# TODO implement loss, correlation (and other metrics) in a separate 'metrics' module, possibly also a separate 'plotting' module or notebook
 
 import numpy as np
 import pandas as pd
@@ -11,27 +11,37 @@ from einops import rearrange
 from tqdm import tqdm
 
 
-def train_model(args, device, model, train_dl, test_dl, num_patches, optimizer, accelerator, data_type, local_rank):
-    
+def train_model(
+    args,
+    device,
+    model,
+    train_dl,
+    test_dl,
+    num_patches,
+    optimizer,
+    accelerator,
+    data_type,
+    local_rank,
+):
     """
     Runs model training
 
-    Args: 
+    Args:
         args: input arguments
         device: the gpu to be used for model training
-        model: an untrained model instance with randomly initialized parameters 
+        model: an untrained model instance with randomly initialized parameters
         train_dl: dataloader instance for train split
         test_dl: dataloader instance for test split
         num_patches: number of patches in which the input data is segmented
-        optimizer: Adam optimizer instance - https://www.analyticsvidhya.com/blog/2023/12/adam-optimizer/ 
+        optimizer: Adam optimizer instance - https://www.analyticsvidhya.com/blog/2023/12/adam-optimizer/
         accelerator: an accelerator instance - https://huggingface.co/docs/accelerate/en/index
         data_type: the data type to be used, we use "fp16" mixed precision - https://towardsdatascience.com/understanding-mixed-precision-training-4b246679c7c4
         local_rank: the local rank environment variable (only needed for multi-gpu training)
-        
+
     Returns:
         model: model instance with updated parameters after training
     """
-        
+
     ### class token config ###
     use_cls_token = args.use_cls_token
 
@@ -58,9 +68,7 @@ def train_model(args, device, model, train_dl, test_dl, num_patches, optimizer, 
 
     mse = nn.MSELoss()
     if use_contrastive_loss:
-        logit_scale = nn.Parameter(
-            torch.ones([]) * np.log(1 / 0.07)
-        )  
+        logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
     lrs, recon_losses, contrastive_losses, test_losses = [], [], [], []
     train_corr = pd.DataFrame()
@@ -73,9 +81,7 @@ def train_model(args, device, model, train_dl, test_dl, num_patches, optimizer, 
         start = t.time()
         with torch.cuda.amp.autocast(dtype=data_type):
             model.train()
-            for train_i, batch in enumerate(
-                train_dl
-            ):  
+            for train_i, batch in enumerate(train_dl):
                 optimizer.zero_grad()
 
                 signal = batch.to(device)
@@ -145,20 +151,31 @@ def train_model(args, device, model, train_dl, test_dl, num_patches, optimizer, 
                             # average across samples in batch
                             corrs = []
                             for b in range(0, len(signal[:, 0, 0, 0, 0, 0])):
-                                corr = np.correlate(
-                                    signal[b, c, :, :, h, w].flatten(),
-                                    output[b, c, :, :, h, w].flatten(),
-                                )[0]
-                                corrs.append(corr)
+                                x = signal[b, c, :, :, h, w].flatten()
+                                y = output[b, c, :, :, h, w].flatten()
+                                # add check to make sure x and y are the same length #TODO
+                                n = len(x)
+                                # this is for the channels that we zero padded, to avoid division by 0
+                                # we could also just exclude those channels
+                                if np.sum(x) == 0:
+                                    r = 0
+                                else:
+                                    r = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (
+                                        np.sqrt(
+                                            (n * np.sum(x**2) - (np.sum(x)) ** 2)
+                                            * (n * np.sum(y**2) - (np.sum(y)) ** 2)
+                                        )
+                                    )
+                                corrs.append(r)
                             res["band"] = bands[c]
-                            res["corr"] = np.mean(corr)
+                            res["corr"] = np.mean(corrs)
                             res_list.append(res.copy())
 
                 new_train_corr = pd.DataFrame(res_list)
                 train_corr = pd.concat([train_corr, new_train_corr])
 
                 train_corr.to_csv(
-                    os.path.dirname(os.getcwd()) + f"/results/{args.job_name}_train_corr.csv",
+                    os.getcwd() + f"/results/{args.job_name}_train_corr.csv",
                     index=False,
                 )
 
@@ -237,20 +254,31 @@ def train_model(args, device, model, train_dl, test_dl, num_patches, optimizer, 
                             # average across samples in batch
                             corrs = []
                             for b in range(0, len(signal[:, 0, 0, 0, 0, 0])):
-                                corr = np.correlate(
-                                    signal[b, c, :, :, h, w].flatten(),
-                                    output[b, c, :, :, h, w].flatten(),
-                                )[0]
-                                corrs.append(corr)
+                                x = signal[b, c, :, :, h, w].flatten()
+                                y = output[b, c, :, :, h, w].flatten()
+                                # add check to make sure x and y are the same length #TODO
+                                n = len(x)
+                                # this is for the channels that we zero padded, to avoid division by 0
+                                # we could also just exclude those channels
+                                if np.sum(x) == 0:
+                                    r = 0
+                                else:
+                                    r = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (
+                                        np.sqrt(
+                                            (n * np.sum(x**2) - (np.sum(x)) ** 2)
+                                            * (n * np.sum(y**2) - (np.sum(y)) ** 2)
+                                        )
+                                    )
+                                corrs.append(r)
                             res["band"] = bands[c]
-                            res["corr"] = np.mean(corr)
+                            res["corr"] = np.mean(corrs)
                             res_list.append(res.copy())
 
                 new_test_corr = pd.DataFrame(res_list)
                 test_corr = pd.concat([test_corr, new_test_corr])
 
                 test_corr.to_csv(
-                    os.path.dirname(os.getcwd()) + f"/results/{args.job_name}_test_corr.csv",
+                    os.getcwd() + f"/results/{args.job_name}_test_corr.csv",
                     index=False,
                 )
 
@@ -268,9 +296,7 @@ def train_model(args, device, model, train_dl, test_dl, num_patches, optimizer, 
         plt.plot(recon_losses)
         plt.title("Training re-construction losses")
         # plt.show()
-        plt.savefig(
-             os.path.dirname(os.getcwd()) + f"/results/{args.job_name}_training_loss.png"
-        )
+        plt.savefig(os.getcwd() + f"/results/{args.job_name}_training_loss.png")
 
         if use_contrastive_loss:
             plt.figure(figsize=(8, 3))
@@ -283,8 +309,6 @@ def train_model(args, device, model, train_dl, test_dl, num_patches, optimizer, 
         plt.title("Test losses")
         # plt.show()
 
-        plt.savefig(
-             os.path.dirname(os.getcwd()) + f"/results/{args.job_name}_test_loss.png"
-        )
+        plt.savefig(os.getcwd() + f"/results/{args.job_name}_test_loss.png")
 
     return model
