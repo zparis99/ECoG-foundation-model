@@ -5,22 +5,22 @@ import torch
 from accelerate import Accelerator, DeepSpeedPlugin
 
 import utils
-from models import * 
+from models import *
+
 
 def system_setup():
-
     """
     Sets up accelerator, device, datatype precision and local rank
 
     Args:
-        
+
     Returns:
         accelerator: an accelerator instance - https://huggingface.co/docs/accelerate/en/index
         device: the gpu to be used for model training
         data_type: the data type to be used, we use "fp16" mixed precision - https://towardsdatascience.com/understanding-mixed-precision-training-4b246679c7c4
         local_rank: the local rank environment variable (only needed for multi-gpu training)
     """
-    
+
     # tf32 data type is faster than standard float32
     torch.backends.cuda.matmul.allow_tf32 = True
 
@@ -44,18 +44,18 @@ def system_setup():
 
     return accelerator, device, data_type, local_rank
 
-def model_setup(args, device):
 
+def model_setup(args, device):
     """
     Sets up model config
 
     Args:
         args: input arguments
         device: cuda device
-        
+
     Returns:
-        model: an untrained model instance with randomly initialized parameters 
-        optimizer: an Adam optimizer instance - https://www.analyticsvidhya.com/blog/2023/12/adam-optimizer/ 
+        model: an untrained model instance with randomly initialized parameters
+        optimizer: an Adam optimizer instance - https://www.analyticsvidhya.com/blog/2023/12/adam-optimizer/
         num_patches: the number of patches in which the input data is segmented
     """
 
@@ -105,7 +105,7 @@ def model_setup(args, device):
         num_decoder_patches=num_decoder_patches,
         channels=len(args.bands),
         use_rope_emb=False,
-        use_cls_token=False,
+        use_cls_token=args.use_cls_token,
     )
     utils.count_params(model)
 

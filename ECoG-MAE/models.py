@@ -354,8 +354,7 @@ class SimpleViT(nn.Module):
                 x = torch.cat(
                     [
                         x + pos_emd_encoder,
-                        self.mask_token.repeat(B, N - 1 if self.use_cls_token else N, 1)
-                        + pos_emd_decoder,
+                        self.mask_token.repeat(B, N, 1) + pos_emd_decoder,
                     ],
                     dim=1,
                 )

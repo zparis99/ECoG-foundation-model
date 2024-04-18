@@ -63,7 +63,7 @@ def train_model(
     epoch = 0
     losses, test_losses, lrs = [], [], []
     best_test_loss = 1e9
-    torch.cuda.empty_cache()
+
     model, optimizer, train_dl = accelerator.prepare(model, optimizer, train_dl)
 
     mse = nn.MSELoss()
@@ -73,6 +73,7 @@ def train_model(
     lrs, recon_losses, contrastive_losses, test_losses = [], [], [], []
     train_corr = pd.DataFrame()
     test_corr = pd.DataFrame()
+    recon_signals = pd.DataFrame()
 
     progress_bar = tqdm(
         range(epoch, args.num_epochs), ncols=1200, disable=(local_rank != 0)
@@ -144,7 +145,7 @@ def train_model(
                 for h in range(0, 8):
                     for w in range(0, 8):
                         res["epoch"] = epoch
-                        res["test_i"] = train_i
+                        res["train_i"] = train_i
                         res["elec"] = "G" + str(i)
                         i += 1
                         for c in range(0, len(args.bands)):
@@ -178,6 +179,25 @@ def train_model(
                     os.getcwd() + f"/results/{args.job_name}_train_corr.csv",
                     index=False,
                 )
+
+                # save original and reconstructed signal for plotting (highgamma for one sample and one electrode for now)
+                if train_i == 0:
+
+                    res = {}
+
+                    x = signal[0, 4, :, 0, 0, 0].flatten()
+                    y = output[0, 4, :, 0, 0, 0].flatten()
+
+                    res["epoch"] = epoch
+                    res["x"] = [x]
+                    res["y"] = [y]
+
+                    new_recon_signals = pd.DataFrame(res)
+                    recon_signals = pd.concat([recon_signals, new_recon_signals])
+
+                    recon_signals.to_pickle(
+                        os.getcwd() + f"/results/{args.job_name}_recon_signals.txt"
+                    )
 
                 accelerator.backward(loss)
                 optimizer.step()

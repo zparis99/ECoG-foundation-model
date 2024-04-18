@@ -1,6 +1,6 @@
 import argparse
 import ast
-import sys
+
 
 def arg_parser():
     parser = argparse.ArgumentParser()
@@ -17,10 +17,13 @@ def arg_parser():
     parser.add_argument("--decoder-mask-ratio", type=float)
     parser.add_argument("--bands", type=str)
     parser.add_argument("--num-epochs", type=int)
-    parser.add_argument("--use-contrastive-loss", dest="use-contrastive-loss", action="store_true")
-    parser.set_defaults(use_contrastive_loss=False)
-    parser.add_argument("--use-cls-token", dest="use-cls-token", action="store_true")
+    parser.add_argument("--use-cls-token", dest="use_cls_token", action="store_true")
     parser.set_defaults(use_cls_token=False)
+    parser.add_argument(
+        "--use-contrastive-loss", dest="use_contrastive_loss", action="store_true"
+    )
+    parser.set_defaults(use_contrastive_loss=False)
+
     args = parser.parse_args()
 
     # parse string input to list of lists

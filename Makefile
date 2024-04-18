@@ -4,7 +4,7 @@
 USR := $(shell whoami | head -c 2)
 DT := $(shell date +"%Y%m%d")
 
-PREFIX = corr-fixed
+PREFIX = cls-token-fixed
 DATA_SIZE = 0.025
 BATCH_SIZE = 256
 NEW_FS = 20
@@ -24,7 +24,8 @@ CMD = python
 
 # for commands debug, use-contrastive-loss, use-cls-token: add to arguments = True, leave out = False
 # --debug
-# --use-contrastive-loss
+# --use-cls-token (not implemented yet!)
+# --use-contrastive-loss (not implemented yet!)
 
 model-train:
 	mkdir -p logs
@@ -39,5 +40,4 @@ model-train:
 		--tube-mask-ratio $(TUBE_MASK_RATIO) \
 		--decoder-mask-ratio $(DECODER_MASK_RATIO) \
 		--bands $(BANDS) \
-		--num-epochs $(NUM_EPOCHS) \
-		--use-cls-token;
+		--num-epochs $(NUM_EPOCHS);

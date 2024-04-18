@@ -1,18 +1,18 @@
-#TODO implement precise error messages
+# TODO implement precise error messages
 
 import time as t
 import torch
 
-def test_dl(args,train_dl,test_dl):
 
+def test_loader(args, train_dl, test_dl):
     """
     Tests if dataloader works as intended
 
-    Args: 
+    Args:
         args: input arguments
         train_dl: dataloader object
         tets_dl dataloader object
-        
+
     Returns:
     """
 
@@ -22,47 +22,51 @@ def test_dl(args,train_dl,test_dl):
         start = t.time()
 
         train_samples = 0
-        print('test train_dl')
-        for train_i,signal in enumerate(train_dl):
+        print("test train_dl")
+        for train_i, signal in enumerate(train_dl):
 
             if train_i == 1:
                 break
 
-            print('train batch ' + str(train_i))
-            print('signal ' + str(signal.shape))
+            print("train batch " + str(train_i))
+            print("signal " + str(signal.shape))
             train_samples += len(signal)
 
         end = t.time()
 
-        print('Dataloader tested with batch size ' + str(args.batch_size) + '. Time elapsed: ' + str(end-start))
+        print(
+            "Dataloader tested with batch size "
+            + str(args.batch_size)
+            + ". Time elapsed: "
+            + str(end - start)
+        )
 
         test_samples = 0
-        print('\ntest test_dl')
-        for test_i,signal in enumerate(test_dl):
+        print("\ntest test_dl")
+        for test_i, signal in enumerate(test_dl):
 
             if test_i == 1:
                 break
 
             test_samples += len(signal)
-            print('test batch ' + str(test_i))
-            print('signal ' + str(signal.shape))
+            print("test batch " + str(test_i))
+            print("signal " + str(signal.shape))
 
 
-def test_model(args,device,model,num_patches):
-
+def test_model(args, device, model, num_patches):
     """
     Tests if model works as intended
 
-    Args: 
+    Args:
         args: input arguments
-        device: 
-        model: 
+        device:
+        model:
         num_patches: number of patches in which the input data is segmented
-        
+
     Returns:
     """
 
-    print('Testing model')
+    print("Testing model")
 
     num_encoder_patches = int(num_patches * (1 - args.tube_mask_ratio))
     num_decoder_patches = int(num_patches * (1 - args.decoder_mask_ratio))
@@ -84,7 +88,10 @@ def test_model(args,device,model,num_patches):
 
         print("\ndecoder")
         decoder_out = model(
-            encoder_out, encoder_mask=encoder_mask, decoder_mask=decoder_mask, verbose=True
+            encoder_out,
+            encoder_mask=encoder_mask,
+            decoder_mask=decoder_mask,
+            verbose=True,
         )
 
         if args.use_cls_token:
