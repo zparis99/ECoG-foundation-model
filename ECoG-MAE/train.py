@@ -97,16 +97,41 @@ def train_model(
                 tube_mask[tube_idx] = True
                 tube_mask = tube_mask.tile(num_frames)
 
-                # create decoder mask similar to tube mask, but ensure no overlap
-                decoder_mask = torch.zeros(num_patches).to(device).to(torch.bool)
-                remaining_mask_idx = (~tube_mask).nonzero()
+                if args.decoder_mask_ratio == 0:
+                    # create decoder mask similar to tube mask, but ensure no overlap
+                    decoder_mask = torch.zeros(num_patches).to(device).to(torch.bool)
+                    remaining_mask_idx = (~tube_mask).nonzero()
+                    decoder_mask_idx = remaining_mask_idx[
+                        : int(num_patches * (1 - args.decoder_mask_ratio))
+                    ]
+                    decoder_mask[decoder_mask_idx] = True
+                else:
+                    if args.running_cell_masking:
+                        num_patch_per_cell = 4
+                        num_mask_per_cell = int(
+                            args.decoder_mask_ratio * num_patch_per_cell
+                        )
+                        stride = int(num_patch_per_cell / num_mask_per_cell)
+                        num_patch_per_frame = 16  # change to be flexible #TODO
+                        cell = torch.ones(
+                            num_frames // args.frame_patch_size, num_patch_per_cell
+                        )
+                        # mask out patches in cell so that it spatially progresses across frames
+                        for i in range(num_frames // args.frame_patch_size):
+                            for j in range(num_mask_per_cell):
+                                cell[i, (int(j * stride) + i) % num_patch_per_cell] = 0
 
-                # implement running cell masking here #TODO
+                        decoder_mask = (
+                            cell.repeat(
+                                1, int(num_patch_per_frame / num_patch_per_cell)
+                            )
+                            .flatten(0)
+                            .to(device)
+                            .to(torch.bool)
+                        )
 
-                decoder_mask_idx = remaining_mask_idx[
-                    : int(num_patches * (1 - args.decoder_mask_ratio))
-                ]
-                decoder_mask[decoder_mask_idx] = True
+                        # filter out patches that were seen by the encoder
+                        decoder_mask[~tube_mask] == False
 
                 # encode the tube patches
                 encoder_out = model(signal, encoder_mask=tube_mask)
@@ -118,18 +143,14 @@ def train_model(
                     encoder_out, encoder_mask=tube_mask, decoder_mask=decoder_mask
                 )
 
-                if args.decoder_mask_ratio != 0:
-                    # subset only the reconstructed decoder patches
-                    output = decoder_out[:, -num_decoder_patches:]
-                elif args.decoder_mask_ratio == 0:
-                    output = decoder_out
+                output = decoder_out
+                recon_output = decoder_out[:, num_encoder_patches:]
 
                 # compare to ground truth and calculate loss
                 target_patches = model.patchify(signal)
                 target_patches_vit = rearrange(target_patches, "b ... d -> b (...) d")
                 target = target_patches_vit[:, decoder_mask]
-                rec_output = output[:, decoder_mask]
-                loss = mse(rec_output, target)
+                loss = mse(recon_output, target)
 
                 # implement contrastive loss #TODO
 
@@ -218,11 +239,41 @@ def train_model(
                 tube_mask[tube_idx] = True
                 tube_mask = tube_mask.tile(num_frames)
 
-                # create decoder mask similar to tube mask, but ensure no overlap
-                decoder_mask = torch.zeros(num_patches).to(device).to(torch.bool)
-                remaining_mask_idx = (~tube_mask).nonzero()
+                if args.decoder_mask_ratio == 0:
+                    # create decoder mask similar to tube mask, but ensure no overlap
+                    decoder_mask = torch.zeros(num_patches).to(device).to(torch.bool)
+                    remaining_mask_idx = (~tube_mask).nonzero()
+                    decoder_mask_idx = remaining_mask_idx[
+                        : int(num_patches * (1 - args.decoder_mask_ratio))
+                    ]
+                    decoder_mask[decoder_mask_idx] = True
+                else:
+                    if args.running_cell_masking:
+                        num_patch_per_cell = 4
+                        num_mask_per_cell = int(
+                            args.decoder_mask_ratio * num_patch_per_cell
+                        )
+                        stride = int(num_patch_per_cell / num_mask_per_cell)
+                        num_patch_per_frame = 16  # change to be flexible #TODO
+                        cell = torch.ones(
+                            num_frames // args.frame_patch_size, num_patch_per_cell
+                        )
+                        # mask out patches in cell so that it spatially progresses across frames
+                        for i in range(num_frames // args.frame_patch_size):
+                            for j in range(num_mask_per_cell):
+                                cell[i, (int(j * stride) + i) % num_patch_per_cell] = 0
 
-                # implement running cell masking here #TODO
+                        decoder_mask = (
+                            cell.repeat(
+                                1, int(num_patch_per_frame / num_patch_per_cell)
+                            )
+                            .flatten(0)
+                            .to(device)
+                            .to(torch.bool)
+                        )
+
+                        # filter out patches that were seen by the encoder
+                        decoder_mask[~tube_mask] == False
 
                 decoder_mask_idx = remaining_mask_idx[
                     : int(num_patches * (1 - args.decoder_mask_ratio))
@@ -239,18 +290,14 @@ def train_model(
                     encoder_out, encoder_mask=tube_mask, decoder_mask=decoder_mask
                 )
 
-                if args.decoder_mask_ratio != 0:
-                    # subset only the reconstructed decoder patches
-                    output = decoder_out[:, -num_decoder_patches:]
-                elif args.decoder_mask_ratio == 0:
-                    output = decoder_out
+                output = decoder_out
+                recon_output = decoder_out[:, num_encoder_patches:]
 
                 # compare to ground truth and calculate loss
                 target_patches = model.patchify(signal)
                 target_patches_vit = rearrange(target_patches, "b ... d -> b (...) d")
                 target = target_patches_vit[:, decoder_mask]
-                rec_output = output[:, decoder_mask]
-                loss = mse(rec_output, target)
+                loss = mse(recon_output, target)
                 test_losses.append(loss.item())
 
                 # implement contrastive loss #TODO

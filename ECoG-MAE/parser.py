@@ -15,6 +15,10 @@ def arg_parser():
     parser.add_argument("--frame-patch-size", type=int)
     parser.add_argument("--tube-mask-ratio", type=float)
     parser.add_argument("--decoder-mask-ratio", type=float)
+    parser.add_argument(
+        "--running-cell-masking", dest="running_cell_masking", action="store_true"
+    )
+    parser.set_defaults(running_cell_masking=False)
     parser.add_argument("--bands", type=str)
     parser.add_argument("--num-epochs", type=int)
     parser.add_argument("--use-cls-token", dest="use_cls_token", action="store_true")
