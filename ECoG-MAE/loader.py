@@ -51,16 +51,14 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             stop=(n_samples * (self.index + 1)),
         )
 
-        norm_sig = sig.copy()
-
-        # normalize signal within each 2 sec chunk - #TODO implement in vectorized form
-        for ch in range(0, len(sig)):
-            norm_sig[ch] = sig[ch] - np.mean(sig[ch]) / np.std(sig[ch])
+        # # normalize signal within each 2 sec chunk - #TODO implement in vectorized form
+        # for ch in range(0, len(sig)):
+        #     sig[ch] = sig[ch] - np.mean(sig[ch]) / np.std(sig[ch])
 
         # zero pad if chunk is shorter than 2 sec
-        if len(norm_sig[0]) < n_samples:
-            padding = np.zeros((64, n_samples - len(norm_sig[0])))
-            norm_sig = np.concatenate((norm_sig, padding), axis=1)
+        if len(sig[0]) < n_samples:
+            padding = np.zeros((64, n_samples - len(sig[0])))
+            sig = np.concatenate((sig, padding), axis=1)
 
         # zero pad if channel is not included in grid #TODO a bit clunky right now, implement in a better and more flexible way
         # since we will load by index position of channel (so if a channel is not included it will load channel n+1 at position 1),
@@ -71,10 +69,10 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             # first we check whether the channel is included
             if np.isin(chn, raw.info.ch_names) == False:
                 # if not we insert 0 padding and shift upwards
-                norm_sig = np.insert(norm_sig, i, np.zeros((1, n_samples)), axis=0)
+                sig = np.insert(sig, i, np.zeros((1, n_samples)), axis=0)
 
         # delete items that were shifted upwards
-        norm_sig = norm_sig[:64, :]
+        sig = sig[:64, :]
 
         # extract frequency bands
         nyq = 0.5 * self.fs
@@ -88,7 +86,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             high = highcut / nyq
 
             sos = scipy.signal.butter(N=4, Wn=[low, high], btype="band", output="sos")
-            filtered.append(scipy.signal.sosfilt(sos, norm_sig))
+            filtered.append(scipy.signal.sosfilt(sos, sig))
 
         filtered = np.array(filtered)
 
@@ -197,6 +195,8 @@ def dl_setup(args):
     # load and concatenate data for train split
     train_datasets = []
 
+    num_train_samples = 0
+
     for i, row in train_data.iterrows():
         path = BIDSPath(
             root=root,
@@ -209,6 +209,10 @@ def dl_setup(args):
         )
 
         train_path = str(path.fpath)
+
+        num_train_samples = num_train_samples + int(
+            highlevel.read_edf_header(edf_file=train_path)["Duration"] / 2
+        )
 
         train_datasets.append(ECoGDataset(root, train_path, bands, fs, new_fs))
 
@@ -238,4 +242,4 @@ def dl_setup(args):
     test_dataset_combined = torch.utils.data.ChainDataset(test_datasets)
     test_dl = torch.utils.data.DataLoader(test_dataset_combined, batch_size=batch_size)
 
-    return train_dl, test_dl
+    return train_dl, test_dl, num_train_samples

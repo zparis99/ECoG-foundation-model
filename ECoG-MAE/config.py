@@ -45,7 +45,7 @@ def system_setup():
     return accelerator, device, data_type, local_rank
 
 
-def model_setup(args, device):
+def model_setup(args, device, num_train_samples):
     """
     Sets up model config
 
@@ -56,6 +56,7 @@ def model_setup(args, device):
     Returns:
         model: an untrained model instance with randomly initialized parameters
         optimizer: an Adam optimizer instance - https://www.analyticsvidhya.com/blog/2023/12/adam-optimizer/
+        lr_scheduler: https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html
         num_patches: the number of patches in which the input data is segmented
     """
 
@@ -132,7 +133,13 @@ def model_setup(args, device):
     optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=max_lr)
 
     # TODO implement lr scheduler
+    lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=max_lr,
+        epochs=args.num_epochs,
+        steps_per_epoch=num_train_samples,
+    )
 
     print("\nDone with model preparations!")
 
-    return model, optimizer, num_patches
+    return model, optimizer, lr_scheduler, num_patches

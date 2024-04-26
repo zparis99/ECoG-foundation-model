@@ -10,8 +10,10 @@ from train import train_model
 def main(args):
 
     accelerator, device, data_type, local_rank = system_setup()
-    train_dl, test_dl = dl_setup(args)
-    model, optimizer, num_patches = model_setup(args, device)
+    train_dl, test_dl, num_train_samples = dl_setup(args)
+    model, optimizer, lr_scheduler, num_patches = model_setup(
+        args, device, num_train_samples
+    )
 
     if args.debug:
 
@@ -26,6 +28,7 @@ def main(args):
         test_dl,
         num_patches,
         optimizer,
+        lr_scheduler,
         accelerator,
         data_type,
         local_rank,

@@ -19,6 +19,7 @@ def train_model(
     test_dl,
     num_patches,
     optimizer,
+    lr_scheduler,
     accelerator,
     data_type,
     local_rank,
@@ -34,6 +35,7 @@ def train_model(
         test_dl: dataloader instance for test split
         num_patches: number of patches in which the input data is segmented
         optimizer: Adam optimizer instance - https://www.analyticsvidhya.com/blog/2023/12/adam-optimizer/
+        lr_scheduler: https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html
         accelerator: an accelerator instance - https://huggingface.co/docs/accelerate/en/index
         data_type: the data type to be used, we use "fp16" mixed precision - https://towardsdatascience.com/understanding-mixed-precision-training-4b246679c7c4
         local_rank: the local rank environment variable (only needed for multi-gpu training)
@@ -64,7 +66,9 @@ def train_model(
     losses, test_losses, lrs = [], [], []
     best_test_loss = 1e9
 
-    model, optimizer, train_dl = accelerator.prepare(model, optimizer, train_dl)
+    model, optimizer, train_dl, lr_scheduler = accelerator.prepare(
+        model, optimizer, train_dl, lr_scheduler
+    )
 
     mse = nn.MSELoss()
     if use_contrastive_loss:
@@ -85,7 +89,15 @@ def train_model(
             for train_i, batch in enumerate(train_dl):
                 optimizer.zero_grad()
 
-                signal = batch.to(device)
+                raw_signal = batch.to(device)
+
+                # z-score normalization across batches
+                mean = torch.mean(raw_signal, dim=(0, 2), keepdim=True)
+                std = torch.std(raw_signal, dim=(0, 2), keepdim=True)
+                signal = (raw_signal - mean) / std
+
+                # replace all NaN's with zeros #HACK
+                signal[torch.isnan(signal)] = 0
 
                 tube_mask = (
                     torch.zeros(num_patches // num_frames).to(device).to(torch.bool)
@@ -117,6 +129,7 @@ def train_model(
                             num_frames // args.frame_patch_size, num_patch_per_cell
                         )
                         # mask out patches in cell so that it spatially progresses across frames
+                        # Quing et al., 2023, MAR: Masked Autoencoder for Efficient Action Recognition
                         for i in range(num_frames // args.frame_patch_size):
                             for j in range(num_mask_per_cell):
                                 cell[i, (int(j * stride) + i) % num_patch_per_cell] = 0
@@ -154,27 +167,27 @@ def train_model(
 
                 # implement contrastive loss #TODO
 
-                signal = np.array(signal.cpu().detach())
-                output = np.array(model.unpatchify(output).cpu().detach())
+                if args.decoder_mask_ratio == 0:
 
-                # calculate correlation
-                res = {}
-                res_list = []
-                i = 1
-                bands = ["theta", "alpha", "beta", "gamma", "highgamma"]
+                    signal = np.array(signal.cpu().detach())
+                    output = np.array(model.unpatchify(output).cpu().detach())
 
-                for h in range(0, 8):
-                    for w in range(0, 8):
-                        res["epoch"] = epoch
-                        res["train_i"] = train_i
-                        res["elec"] = "G" + str(i)
-                        i += 1
-                        for c in range(0, len(args.bands)):
-                            # average across samples in batch
-                            corrs = []
-                            for b in range(0, len(signal[:, 0, 0, 0, 0, 0])):
-                                x = signal[b, c, :, :, h, w].flatten()
-                                y = output[b, c, :, :, h, w].flatten()
+                    # calculate correlation
+                    res_list = []
+                    i = 1
+                    bands = ["theta", "alpha", "beta", "gamma", "highgamma"]
+
+                    for h in range(0, 8):
+                        for w in range(0, 8):
+                            res = {}
+                            res["epoch"] = epoch
+                            res["train_i"] = train_i
+                            res["elec"] = "G" + str(i)
+                            i += 1
+                            for c in range(0, len(args.bands)):
+                                # correlate across samples in batch
+                                x = signal[:, c, :, :, h, w].flatten()
+                                y = output[:, c, :, :, h, w].flatten()
                                 # add check to make sure x and y are the same length #TODO
                                 n = len(x)
                                 # this is for the channels that we zero padded, to avoid division by 0
@@ -188,36 +201,128 @@ def train_model(
                                             * (n * np.sum(y**2) - (np.sum(y)) ** 2)
                                         )
                                     )
-                                corrs.append(r)
-                            res["band"] = bands[c]
-                            res["corr"] = np.mean(corrs)
-                            res_list.append(res.copy())
 
-                new_train_corr = pd.DataFrame(res_list)
-                train_corr = pd.concat([train_corr, new_train_corr])
+                                res["band"] = bands[c]
+                                res["corr"] = r
+                                res_list.append(res.copy())
 
-                train_corr.to_csv(
-                    os.getcwd() + f"/results/{args.job_name}_train_corr.csv",
-                    index=False,
-                )
+                    new_train_corr = pd.DataFrame(res_list)
+                    train_corr = pd.concat([train_corr, new_train_corr])
 
-                # save original and reconstructed signal for plotting (highgamma for one sample and one electrode for now)
-                if train_i == 0:
+                    train_corr.to_csv(
+                        os.getcwd() + f"/results/{args.job_name}_train_corr.csv",
+                        index=False,
+                    )
 
-                    res = {}
+                    # save original and reconstructed signal for plotting (highgamma for one sample for now)
+                    if train_i == 8:
 
-                    x = signal[0, 4, :, 0, 0, 0].flatten()
-                    y = output[0, 4, :, 0, 0, 0].flatten()
+                        res_list = []
+                        i = 1
 
-                    res["epoch"] = epoch
-                    res["x"] = [x]
-                    res["y"] = [y]
+                        for h in range(0, 8):
+                            for w in range(0, 8):
 
-                    new_recon_signals = pd.DataFrame(res)
-                    recon_signals = pd.concat([recon_signals, new_recon_signals])
+                                res = {}
+                                res["epoch"] = epoch
+                                res["elec"] = "G" + str(i)
+                                i += 1
 
-                    recon_signals.to_pickle(
-                        os.getcwd() + f"/results/{args.job_name}_recon_signals.txt"
+                                x = signal[50, 4, :, 0, h, w].flatten()
+                                y = output[50, 4, :, 0, h, w].flatten()
+
+                                res["x"] = [x]
+                                res["y"] = [y]
+
+                                res_list.append(res.copy())
+
+                        new_recon_signals = pd.DataFrame(res_list)
+                        recon_signals = pd.concat([recon_signals, new_recon_signals])
+
+                        recon_signals.to_pickle(
+                            os.getcwd() + f"/results/{args.job_name}_recon_signals.txt"
+                        )
+
+                else:
+
+                    # make more flexible #TODO
+
+                    signal = np.array(
+                        rearrange(
+                            target,
+                            "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
+                            c=len(args.bands),
+                            d=1,
+                            s=4,
+                            f=num_frames,
+                            pd=1,
+                            ps=4,
+                            pf=1,
+                        )
+                        .cpu()
+                        .detach()
+                    )
+
+                    output = np.array(
+                        rearrange(
+                            recon_output,
+                            "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
+                            c=len(args.bands),
+                            d=1,
+                            s=4,
+                            f=num_frames,
+                            pd=1,
+                            ps=4,
+                            pf=1,
+                        )
+                        .cpu()
+                        .detach()
+                    )
+
+                    # calculate correlation
+                    res_list = []
+                    i = 1
+                    bands = ["theta", "alpha", "beta", "gamma", "highgamma"]
+
+                    for c in range(0, len(args.bands)):
+
+                        res = {}
+                        res["epoch"] = epoch
+                        res["train_i"] = train_i
+
+                        # average across electrodes
+                        corrs = []
+                        for s in range(0, len(signal[0, 0, 0, :])):
+
+                            corrs = []
+
+                            x = signal[:, c, :, s].flatten()
+                            y = output[:, c, :, s].flatten()
+                            # add check to make sure x and y are the same length #TODO
+                            n = len(x)
+                            # this is for the channels that we zero padded, to avoid division by 0
+                            # we could also just exclude those channels
+                            if np.sum(x) == 0:
+                                r = 0
+                            else:
+                                r = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (
+                                    np.sqrt(
+                                        (n * np.sum(x**2) - (np.sum(x)) ** 2)
+                                        * (n * np.sum(y**2) - (np.sum(y)) ** 2)
+                                    )
+                                )
+                            corrs.append(r)
+
+                        res["band"] = bands[c]
+                        res["corr"] = np.mean(corrs)
+                        res_list.append(res.copy())
+
+                    new_train_corr = pd.DataFrame(res_list)
+                    train_corr = pd.concat([train_corr, new_train_corr])
+
+                    train_corr.to_csv(
+                        os.getcwd() + f"/results/{args.job_name}_train_corr.csv",
+                        index=False,
                     )
 
                 accelerator.backward(loss)
@@ -227,8 +332,16 @@ def train_model(
 
             model.eval()
             for test_i, batch in enumerate(test_dl):
-                signal = batch.to(device)
 
+                raw_signal = batch.to(device)
+
+                # z-score normalization across batches
+                mean = torch.mean(raw_signal, dim=(0, 2), keepdim=True)
+                std = torch.std(raw_signal, dim=(0, 2), keepdim=True)
+                signal = (raw_signal - mean) / std
+
+                # replace all NaN's with zeros #HACK
+                signal[torch.isnan(signal)] = 0
                 tube_mask = (
                     torch.zeros(num_patches // num_frames).to(device).to(torch.bool)
                 )
@@ -259,6 +372,7 @@ def train_model(
                             num_frames // args.frame_patch_size, num_patch_per_cell
                         )
                         # mask out patches in cell so that it spatially progresses across frames
+                        # Quing et al., 2023, MAR: Masked Autoencoder for Efficient Action Recognition
                         for i in range(num_frames // args.frame_patch_size):
                             for j in range(num_mask_per_cell):
                                 cell[i, (int(j * stride) + i) % num_patch_per_cell] = 0
@@ -274,11 +388,6 @@ def train_model(
 
                         # filter out patches that were seen by the encoder
                         decoder_mask[~tube_mask] == False
-
-                decoder_mask_idx = remaining_mask_idx[
-                    : int(num_patches * (1 - args.decoder_mask_ratio))
-                ]
-                decoder_mask[decoder_mask_idx] = True
 
                 # encode the tube patches
                 encoder_out = model(signal, encoder_mask=tube_mask)

@@ -207,12 +207,10 @@ class SimpleViT(nn.Module):
         # w * pw = width (w = n width patches)
         self.patchify = Rearrange(
             "b c (f pf) (d pd) (h ph) (w pw) -> b f d h w (pd ph pw pf c)",
-            # 1 1 40 1 8 8 - > 1 (10 1 8 8) 4
-            # 1
-            pd=patch_depth,  # 1
-            ph=patch_height,  # 1
-            pw=patch_width,  # 1
-            pf=frame_patch_size,  # 4
+            pd=patch_depth,
+            ph=patch_height,
+            pw=patch_width,
+            pf=frame_patch_size,
         )
 
         # self.unpatchify = nn.Sequential(
