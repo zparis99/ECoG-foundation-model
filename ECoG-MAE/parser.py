@@ -27,6 +27,7 @@ def arg_parser():
         "--use-contrastive-loss", dest="use_contrastive_loss", action="store_true"
     )
     parser.set_defaults(use_contrastive_loss=False)
+    parser.add_argument("--plot-type", type=str)
 
     args = parser.parse_args()
 

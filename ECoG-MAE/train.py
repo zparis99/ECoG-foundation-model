@@ -411,52 +411,52 @@ def train_model(
 
                 # implement contrastive loss #TODO
 
-                signal = np.array(signal.cpu().detach())
-                output = np.array(model.unpatchify(output).cpu().detach())
+                # signal = np.array(signal.cpu().detach())
+                # output = np.array(model.unpatchify(output).cpu().detach())
 
-                # calculate correlation
-                res = {}
-                res_list = []
-                i = 1
-                bands = ["theta", "alpha", "beta", "gamma", "highgamma"]
+                # # calculate correlation
+                # res = {}
+                # res_list = []
+                # i = 1
+                # bands = ["theta", "alpha", "beta", "gamma", "highgamma"]
 
-                for h in range(0, 8):
-                    for w in range(0, 8):
-                        res["epoch"] = epoch
-                        res["test_i"] = test_i
-                        res["elec"] = "G" + str(i)
-                        i += 1
-                        for c in range(0, len(args.bands)):
-                            # average across samples in batch
-                            corrs = []
-                            for b in range(0, len(signal[:, 0, 0, 0, 0, 0])):
-                                x = signal[b, c, :, :, h, w].flatten()
-                                y = output[b, c, :, :, h, w].flatten()
-                                # add check to make sure x and y are the same length #TODO
-                                n = len(x)
-                                # this is for the channels that we zero padded, to avoid division by 0
-                                # we could also just exclude those channels
-                                if np.sum(x) == 0:
-                                    r = 0
-                                else:
-                                    r = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (
-                                        np.sqrt(
-                                            (n * np.sum(x**2) - (np.sum(x)) ** 2)
-                                            * (n * np.sum(y**2) - (np.sum(y)) ** 2)
-                                        )
-                                    )
-                                corrs.append(r)
-                            res["band"] = bands[c]
-                            res["corr"] = np.mean(corrs)
-                            res_list.append(res.copy())
+                # for h in range(0, 8):
+                #     for w in range(0, 8):
+                #         res["epoch"] = epoch
+                #         res["test_i"] = test_i
+                #         res["elec"] = "G" + str(i)
+                #         i += 1
+                #         for c in range(0, len(args.bands)):
+                #             # average across samples in batch
+                #             corrs = []
+                #             for b in range(0, len(signal[:, 0, 0, 0, 0, 0])):
+                #                 x = signal[b, c, :, :, h, w].flatten()
+                #                 y = output[b, c, :, :, h, w].flatten()
+                #                 # add check to make sure x and y are the same length #TODO
+                #                 n = len(x)
+                #                 # this is for the channels that we zero padded, to avoid division by 0
+                #                 # we could also just exclude those channels
+                #                 if np.sum(x) == 0:
+                #                     r = 0
+                #                 else:
+                #                     r = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (
+                #                         np.sqrt(
+                #                             (n * np.sum(x**2) - (np.sum(x)) ** 2)
+                #                             * (n * np.sum(y**2) - (np.sum(y)) ** 2)
+                #                         )
+                #                     )
+                #                 corrs.append(r)
+                #             res["band"] = bands[c]
+                #             res["corr"] = np.mean(corrs)
+                #             res_list.append(res.copy())
 
-                new_test_corr = pd.DataFrame(res_list)
-                test_corr = pd.concat([test_corr, new_test_corr])
+                # new_test_corr = pd.DataFrame(res_list)
+                # test_corr = pd.concat([test_corr, new_test_corr])
 
-                test_corr.to_csv(
-                    os.getcwd() + f"/results/{args.job_name}_test_corr.csv",
-                    index=False,
-                )
+                # test_corr.to_csv(
+                #     os.getcwd() + f"/results/{args.job_name}_test_corr.csv",
+                #     index=False,
+                # )
 
             end = t.time()
 

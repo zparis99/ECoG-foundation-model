@@ -84,6 +84,7 @@ def model_setup(args, device, num_train_samples):
         * num_frames
         / frame_patch_size
     )
+    patch_dim = patch_size[0] * patch_size[1] * patch_size[2] * frame_patch_size
 
     num_encoder_patches = int(num_patches * (1 - args.tube_mask_ratio))
     num_decoder_patches = int(num_patches * (1 - args.decoder_mask_ratio))
@@ -100,8 +101,8 @@ def model_setup(args, device, num_train_samples):
         frame_patch_size=frame_patch_size,
         depth=12,
         heads=12,
-        dim=512,
-        mlp_dim=512,  # TODO: right now dim needs to equal mlp_dim, and both need to be 512
+        dim=patch_dim,  # original 512
+        mlp_dim=patch_dim,  # original 512
         num_encoder_patches=num_encoder_patches,
         num_decoder_patches=num_decoder_patches,
         channels=len(args.bands),
