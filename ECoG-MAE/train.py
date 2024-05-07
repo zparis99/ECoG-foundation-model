@@ -109,7 +109,7 @@ def train_model(
                 else:
                     if args.running_cell_masking:
                         decoder_mask = get_running_cell_mask(
-                            args, num_patches, tube_mask, device
+                            args, num_frames, tube_mask, device
                         )
 
                 # encode the tube patches
@@ -284,5 +284,12 @@ def train_model(
         plot_losses(args, recon_losses, test_losses)
         if use_contrastive_loss:
             plot_contrastive_loss(args, contrastive_losses)
+
+        if args.decoder_mask_ratio == 0:
+
+            plot_correlation(args, test_corr)
+            plot_recon_signals(args, recon_signals)
+        else:
+            plot_correlation_across_electrodes(args, test_corr)
 
     return model

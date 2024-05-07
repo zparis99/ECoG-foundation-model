@@ -13,7 +13,7 @@ download-data:
 PREFIX = small-emb-dim
 # take 0.025 for debugging
 DATA_SIZE = 0.25
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 NEW_FS = 20
 SAMPLE_LENGTH = 2
 PATCH_SIZE =  1 2 2
@@ -22,6 +22,7 @@ FRAME_PATCH_SIZE = 1
 TUBE_MASK_RATIO = 0.75
 DECODER_MASK_RATIO = 0
 BANDS = "[[4,8],[8,13],[13,30],[30,55],[70,200]]"
+# BANDS = "[[70,200]]"
 BANDS_STR = all
 NUM_EPOCHS = 30
 JOB_NAME = "$(USR)-$(DT)-$(PREFIX)-ds-$(DATA_SIZE)-bs-$(BATCH_SIZE)-fs-$(NEW_FS)-sl-$(SAMPLE_LENGTH)-ps-$(PATCH_SIZE_STR)-fps-$(FRAME_PATCH_SIZE)-dmr-$(DECODER_MASK_RATIO)-b-$(BANDS_STR)-ne-$(NUM_EPOCHS)"
@@ -49,6 +50,7 @@ model-train:
 		--frame-patch-size $(FRAME_PATCH_SIZE) \
 		--tube-mask-ratio $(TUBE_MASK_RATIO) \
 		--decoder-mask-ratio $(DECODER_MASK_RATIO) \
+		--running-cell-masking \
 		--bands $(BANDS) \
 		--num-epochs $(NUM_EPOCHS);
 

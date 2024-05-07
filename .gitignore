@@ -5,6 +5,8 @@ cache
 dataset
 dataset_full
 
+plot_old.py
+
 *.ipynb
 *.ckpt
 *.zip

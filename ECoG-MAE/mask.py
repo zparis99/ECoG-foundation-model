@@ -33,7 +33,7 @@ def get_running_cell_mask(args, num_frames, tube_mask, device):
     stride = int(num_patch_per_cell / num_mask_per_cell)
     num_patch_per_frame = 16  # change to be flexible #TODO
     cell = torch.ones(num_frames // args.frame_patch_size, num_patch_per_cell)
-    # mask out patches in cell so that it spatially progresses across frames
+    # mask out patches in cell so that the mask spatially progresses across frames
     # Quing et al., 2023, MAR: Masked Autoencoder for Efficient Action Recognition
     for i in range(num_frames // args.frame_patch_size):
         for j in range(num_mask_per_cell):

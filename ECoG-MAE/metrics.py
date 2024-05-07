@@ -62,6 +62,7 @@ def get_correlation_across_elecs(args, signal, output, epoch, test_i):
         res = {}
         res["epoch"] = epoch
         res["train_i"] = test_i
+        res["elec"] = "avg"
 
         # average across electrodes
         corrs = []

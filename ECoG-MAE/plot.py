@@ -55,12 +55,12 @@ def plot_correlation(args, df):
 
     subplot_height_ratios = [1, 1, 1, 1, 1]
 
-    # Iterate over each elec_numeric group
+    # Iterate over each elec group
     for key, elec in elecs:
         fig = plt.figure(figsize=(8, 6))
         gs = fig.add_gridspec(nrows=5, ncols=1, height_ratios=subplot_height_ratios)
 
-        # Iterate over each electrode within the elec_numeric group
+        # Iterate over each band within the elec group
         for i, (_, band_group) in enumerate(elec.groupby("band")):
             ax = fig.add_subplot(gs[i, 0])
 
