@@ -1,12 +1,14 @@
 __pycache__
 
 ecog
-
-dataset/*
+cache
+dataset
+dataset_full
 
 *.ipynb
 *.ckpt
+*.zip
 
-logs/*
-results/*
-utils/*
+logs
+results
+utils

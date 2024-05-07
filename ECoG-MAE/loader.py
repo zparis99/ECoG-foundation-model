@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import time as t
+import os
 import mne
 from mne_bids import BIDSPath
 from pyedflib import highlevel
@@ -178,14 +179,17 @@ def dl_setup(args):
         test_dl: dataloader instance for test split
     """
 
-    # TODO change to point to sandbox data
-    root = "/scratch/gpfs/ln1144/fm-preproc/dataset/derivatives/preprocessed"
-    data = pd.read_csv("/scratch/gpfs/ln1144/fm-preproc/dataset/dataset.csv")
+    if args.sandbox:
+        root = f"{os.getcwd()}/dataset/derivatives/preprocessed"
+        data = pd.read_csv(f"{os.getcwd()}/dataset/dataset.csv")
+        train_data, test_data = split_dataframe(data, 0.5)
+    else:
+        root = f"{os.getcwd()}/dataset_full/derivatives/preprocessed"
+        data = pd.read_csv(f"{os.getcwd()}/dataset_full/dataset.csv")
 
-    # only look at subset of data
-    data = data.iloc[: int(len(data) * args.data_size), :]
-
-    train_data, test_data = split_dataframe(data, 0.9)
+        # only look at subset of data
+        data = data.iloc[: int(len(data) * args.data_size), :]
+        train_data, test_data = split_dataframe(data, 0.9)
 
     bands = args.bands
     fs = 512

@@ -8,6 +8,8 @@ def arg_parser():
     parser.add_argument("--debug", dest="debug", action="store_true")
     parser.set_defaults(debug=False)
     parser.add_argument("--data-size", type=float, default=1)
+    parser.add_argument("--sandbox", dest="sandbox", action="store_true")
+    parser.set_defaults(sandbox=False)
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--new-fs", type=int)
     parser.add_argument("--sample-length", type=int)
@@ -27,8 +29,6 @@ def arg_parser():
         "--use-contrastive-loss", dest="use_contrastive_loss", action="store_true"
     )
     parser.set_defaults(use_contrastive_loss=False)
-    parser.add_argument("--plot-type", type=str)
-
     args = parser.parse_args()
 
     # parse string input to list of lists
