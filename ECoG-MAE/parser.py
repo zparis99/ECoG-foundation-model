@@ -5,6 +5,9 @@ import ast
 def arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--job-name", type=str)
+    parser.add_argument("--env", dest="env", action="store_true")
+    parser.set_defaults(env=False)
+    parser.add_argument("--norm", type=str, default="batch")
     parser.add_argument("--debug", dest="debug", action="store_true")
     parser.set_defaults(debug=False)
     parser.add_argument("--data-size", type=float, default=1)
@@ -23,6 +26,7 @@ def arg_parser():
     parser.set_defaults(running_cell_masking=False)
     parser.add_argument("--bands", type=str)
     parser.add_argument("--num-epochs", type=int)
+    parser.add_argument("--learning-rate", type=float, default=0)
     parser.add_argument("--use-cls-token", dest="use_cls_token", action="store_true")
     parser.set_defaults(use_cls_token=False)
     parser.add_argument(

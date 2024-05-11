@@ -14,7 +14,8 @@ import torch
 
 class ECoGDataset(torch.utils.data.IterableDataset):
 
-    def __init__(self, root, path, bands, fs, new_fs):
+    def __init__(self, args, root, path, bands, fs, new_fs):
+        self.args = args
         self.root = root
         self.path = path
         self.bands = bands
@@ -52,9 +53,10 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             stop=(n_samples * (self.index + 1)),
         )
 
-        # # normalize signal within each 2 sec chunk - #TODO implement in vectorized form
-        # for ch in range(0, len(sig)):
-        #     sig[ch] = sig[ch] - np.mean(sig[ch]) / np.std(sig[ch])
+        # normalize signal within each 2 sec chunk - #TODO implement in vectorized form
+        if self.args.norm == "sample":
+            for ch in range(0, len(sig)):
+                sig[ch] = sig[ch] - np.mean(sig[ch]) / np.std(sig[ch])
 
         # zero pad if chunk is shorter than 2 sec
         if len(sig[0]) < n_samples:
@@ -91,19 +93,23 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         filtered = np.array(filtered)
 
-        # compute power envelope
-        envelope = np.abs(scipy.signal.hilbert(filtered, axis=2))
+        if self.args.env:
+            # compute power envelope
+            envelope = np.abs(scipy.signal.hilbert(filtered, axis=2))
 
-        # look at power spectrum instead #TODO
+            # look at power spectrum instead #TODOs
 
-        # # decimate before - low pass filter if new_fs == 20 then < 10 Hz
-        # sos = scipy.signal.butter(
-        #     N=4, Wn=[0.5 * self.new_fs / 0.5 * self.new_fs], btype="low", output="sos"
-        # )
-        # envelope = scipy.signal.sosfilt(sos, envelope)
+            # # decimate before - low pass filter if new_fs == 20 then < 10 Hz
+            # sos = scipy.signal.butter(
+            #     N=4, Wn=[0.5 * self.new_fs / 0.5 * self.new_fs], btype="low", output="sos"
+            # )
+            # envelope = scipy.signal.sosfilt(sos, envelope)
 
-        # resample
-        resampled = scipy.signal.resample(envelope, n_new_samples, axis=2)
+            # resample
+            resampled = scipy.signal.resample(envelope, n_new_samples, axis=2)
+
+        else:
+            resampled = scipy.signal.resample(filtered, n_new_samples, axis=2)
 
         # try smoothing window averaging instead #TODO
 
@@ -218,7 +224,7 @@ def dl_setup(args):
             highlevel.read_edf_header(edf_file=train_path)["Duration"] / 2
         )
 
-        train_datasets.append(ECoGDataset(root, train_path, bands, fs, new_fs))
+        train_datasets.append(ECoGDataset(args, root, train_path, bands, fs, new_fs))
 
     train_dataset_combined = torch.utils.data.ChainDataset(train_datasets)
     train_dl = torch.utils.data.DataLoader(
@@ -241,7 +247,7 @@ def dl_setup(args):
 
         test_path = str(path.fpath)
 
-        test_datasets.append(ECoGDataset(root, test_path, bands, fs, new_fs))
+        test_datasets.append(ECoGDataset(args, root, test_path, bands, fs, new_fs))
 
     test_dataset_combined = torch.utils.data.ChainDataset(test_datasets)
     test_dl = torch.utils.data.DataLoader(test_dataset_combined, batch_size=batch_size)

@@ -24,7 +24,9 @@ def system_setup():
     # tf32 data type is faster than standard float32
     torch.backends.cuda.matmul.allow_tf32 = True
 
-    accelerator = Accelerator(split_batches=False, mixed_precision="fp16")
+    # accelerator = Accelerator(split_batches=False, mixed_precision="fp16")
+    accelerator = Accelerator(split_batches=False)
+
     device = "cuda:0"
 
     # set data_type to match your mixed precision
@@ -92,8 +94,6 @@ def model_setup(args, device, num_train_samples):
     print("num_encoder_patches", num_encoder_patches)
     print("num_decoder_patches", num_decoder_patches)
 
-    max_lr = 3e-5  # 3e-5 seems to be working best? original videomae used 1.5e-4
-
     model = SimpleViT(
         image_size=img_size,  # depth, height, width
         image_patch_size=patch_size,  # depth, height, width patch size - change width from patch_size to 1
@@ -131,9 +131,13 @@ def model_setup(args, device, num_train_samples):
         },
     ]
 
-    optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=max_lr)
+    max_lr = 3e-5  # 3e-5 seems to be working best? original videomae used 1.5e-4
 
-    # TODO implement lr scheduler
+    if args.learning_rate == 0:
+        optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=max_lr)
+    else:
+        optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=args.learning_rate)
+
     lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=max_lr,

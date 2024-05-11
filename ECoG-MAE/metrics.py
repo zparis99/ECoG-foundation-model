@@ -9,7 +9,7 @@ from einops import rearrange
 from tqdm import tqdm
 
 
-def get_correlation(args, test_corr, signal, output, epoch, test_i):
+def get_correlation(args, signal, recon_signal, epoch, test_i):
 
     # calculate correlation
     res_list = []
@@ -21,12 +21,12 @@ def get_correlation(args, test_corr, signal, output, epoch, test_i):
             res = {}
             res["epoch"] = epoch
             res["train_i"] = test_i
-            res["elec"] = "G" + str(i)
+            res["elec"] = i
             i += 1
             for c in range(0, len(args.bands)):
                 # correlate across samples in batch
                 x = signal[:, c, :, :, h, w].flatten()
-                y = output[:, c, :, :, h, w].flatten()
+                y = recon_signal[:, c, :, :, h, w].flatten()
                 # add check to make sure x and y are the same length #TODO
                 n = len(x)
                 # this is for the channels that we zero padded, to avoid division by 0
@@ -50,7 +50,7 @@ def get_correlation(args, test_corr, signal, output, epoch, test_i):
     return new_test_corr
 
 
-def get_correlation_across_elecs(args, signal, output, epoch, test_i):
+def get_correlation_across_elecs(args, signal, recon_signal, epoch, test_i):
 
     # calculate correlation
     res_list = []
@@ -62,7 +62,7 @@ def get_correlation_across_elecs(args, signal, output, epoch, test_i):
         res = {}
         res["epoch"] = epoch
         res["train_i"] = test_i
-        res["elec"] = "avg"
+        res["elec"] = 0
 
         # average across electrodes
         corrs = []
@@ -71,12 +71,12 @@ def get_correlation_across_elecs(args, signal, output, epoch, test_i):
             corrs = []
 
             x = signal[:, c, :, s].flatten()
-            y = output[:, c, :, s].flatten()
+            y = recon_signal[:, c, :, s].flatten()
             # add check to make sure x and y are the same length #TODO
             n = len(x)
             # this is for the channels that we zero padded, to avoid division by 0
             # we could also just exclude those channels
-            if np.sum(x) == 0:
+            if np.sum(x) == 0 or np.sum(y) == 0:
                 r = 0
             else:
                 r = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (
@@ -96,7 +96,7 @@ def get_correlation_across_elecs(args, signal, output, epoch, test_i):
     return new_test_corr
 
 
-def get_recon_signals(signal, output, epoch):
+def get_model_recon(signal, recon_signal, epoch):
 
     res_list = []
     i = 1
@@ -106,17 +106,17 @@ def get_recon_signals(signal, output, epoch):
 
             res = {}
             res["epoch"] = epoch
-            res["elec"] = "G" + str(i)
+            res["elec"] = i
             i += 1
 
-            x = signal[0, 4, :, 0, h, w].flatten()
-            y = output[0, 4, :, 0, h, w].flatten()
+            x = signal[8, 4, :, 0, h, w].flatten()
+            y = recon_signal[8, 4, :, 0, h, w].flatten()
 
             res["x"] = [x]
             res["y"] = [y]
 
             res_list.append(res.copy())
 
-    new_recon_signals = pd.DataFrame(res_list)
+    new_model_recon = pd.DataFrame(res_list)
 
-    return new_recon_signals
+    return new_model_recon

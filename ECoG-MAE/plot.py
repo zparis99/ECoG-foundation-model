@@ -36,22 +36,21 @@ def plot_contrastive_loss(args, contrastive_losses):
     plt.savefig(dir + f"{args.job_name}_contrastive_loss.png")
 
 
-def plot_correlation(args, df):
+def plot_correlation(args, df, fn):
 
     dir = os.getcwd() + f"/results/correlation/"
     if not os.path.exists(dir):
         os.makedirs(dir)
 
-    df["elec_numeric"] = df["elec"].apply(lambda x: int(re.search(r"\d+", x).group()))
     groups = df.groupby(["elec", "band"])
     df["x"] = groups.cumcount()
 
     # plotting
-    pdf_pages = PdfPages(dir + f"{args.job_name}_correlation.pdf")
+    pdf_pages = PdfPages(dir + f"{args.job_name}_{fn}.pdf")
 
     colors = {"theta": "g", "alpha": "r", "beta": "b", "gamma": "c", "highgamma": "m"}
 
-    elecs = df.groupby("elec_numeric")
+    elecs = df.groupby("elec")
 
     subplot_height_ratios = [1, 1, 1, 1, 1]
 
@@ -109,15 +108,13 @@ def plot_recon_signals(args, df):
     if not os.path.exists(dir):
         os.makedirs(dir)
 
-    df["elec_numeric"] = df["elec"].apply(lambda x: int(re.search(r"\d+", x).group()))
-
     # plotting
     pdf_pages = PdfPages(dir + f"{args.job_name}_recon_signals.pdf")
-    elecs = df.groupby("elec_numeric")
+    elecs = df.groupby("elec")
 
     for key, elec in elecs:
 
-        fig, axs = plt.subplots(5, 2, figsize=(10, 15))
+        fig, axs = plt.subplots(int(np.ceil(args.num_epochs / 2)), 2, figsize=(10, 15))
 
         axs = axs.flatten()
 

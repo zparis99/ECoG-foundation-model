@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=4G
 #SBATCH --gres=gpu:1
-#SBATCH --time=48:00:00
+#SBATCH --time=15:00:00
 #SBATCH -o './logs/%x.out'
 #SBATCH -e './logs/%x.err'
 

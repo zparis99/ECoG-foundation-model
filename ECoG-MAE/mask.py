@@ -3,13 +3,21 @@ import torch
 
 def get_tube_mask(args, num_patches, num_frames, device):
 
-    tube_mask = torch.zeros(num_patches // num_frames).to(device).to(torch.bool)
+    tube_mask = (
+        torch.zeros(num_patches // (num_frames // args.frame_patch_size))
+        .to(device)
+        .to(torch.bool)
+    )
     mask_idx_candidates = torch.randperm(len(tube_mask))
     tube_idx = mask_idx_candidates[
-        : int(num_patches / num_frames * (1 - args.tube_mask_ratio))
+        : int(
+            num_patches
+            // (num_frames // args.frame_patch_size)
+            * (1 - args.tube_mask_ratio)
+        )
     ]
     tube_mask[tube_idx] = True
-    tube_mask = tube_mask.tile(num_frames)
+    tube_mask = tube_mask.tile(num_frames // args.frame_patch_size)
 
     return tube_mask
 
