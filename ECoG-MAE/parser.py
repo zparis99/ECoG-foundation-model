@@ -5,15 +5,15 @@ import ast
 def arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--job-name", type=str)
-    parser.add_argument("--env", dest="env", action="store_true")
-    parser.set_defaults(env=False)
-    parser.add_argument("--norm", type=str, default="batch")
     parser.add_argument("--debug", dest="debug", action="store_true")
     parser.set_defaults(debug=False)
     parser.add_argument("--data-size", type=float, default=1)
     parser.add_argument("--sandbox", dest="sandbox", action="store_true")
     parser.set_defaults(sandbox=False)
     parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--env", dest="env", action="store_true")
+    parser.set_defaults(env=False)
+    parser.add_argument("--norm", type=str, default="batch")
     parser.add_argument("--new-fs", type=int)
     parser.add_argument("--sample-length", type=int)
     parser.add_argument("--patch-size", nargs="+", type=int)
@@ -33,6 +33,8 @@ def arg_parser():
         "--use-contrastive-loss", dest="use_contrastive_loss", action="store_true"
     )
     parser.set_defaults(use_contrastive_loss=False)
+    parser.add_argument("--dim", type=int, default=0)
+    parser.add_argument("--mlp-dim", type=int, default=0)
     args = parser.parse_args()
 
     # parse string input to list of lists

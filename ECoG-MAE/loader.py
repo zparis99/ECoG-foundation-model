@@ -195,6 +195,7 @@ def dl_setup(args):
 
         # only look at subset of data
         data = data.iloc[: int(len(data) * args.data_size), :]
+        # data = data.iloc[int(len(data) * (1 - args.data_size)) :, :]
         train_data, test_data = split_dataframe(data, 0.9)
 
     bands = args.bands

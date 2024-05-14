@@ -213,20 +213,6 @@ class SimpleViT(nn.Module):
             pf=frame_patch_size,
         )
 
-        # self.unpatchify = nn.Sequential(
-        #     Rearrange(
-        #         "b (f d h w) (pd ph pw pf c) -> b f d h w (pd ph pw pf c)",
-        #         c=channels,
-        #         d=image_depth,
-        #         h=image_height,
-        #         w=image_width,
-        #         pd=patch_depth,
-        #         ph=patch_height,
-        #         pw=patch_width,
-        #         pf=frame_patch_size,
-        #     )
-        # )
-
         self.unpatchify = nn.Sequential(
             Rearrange(
                 "b (f d h w) (pd ph pw pf c) -> b c (f pf) (d pd) (h ph) (w pw)",
@@ -290,6 +276,7 @@ class SimpleViT(nn.Module):
 
         self.encoder_to_decoder = nn.Linear(dim, mlp_dim, bias=False)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, mlp_dim))
+
         # cls token
         self.use_cls_token = use_cls_token
         if use_cls_token:

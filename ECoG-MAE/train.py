@@ -105,6 +105,8 @@ def train_model(
                 # replace all NaN's with zeros #HACK
                 signal[torch.isnan(signal)] = 0
 
+                # plot_signal(args, np.array(signal.detach().to("cpu")))
+
                 tube_mask = get_tube_mask(args, num_patches, num_frames, device)
 
                 if args.decoder_mask_ratio == 0:
@@ -128,14 +130,13 @@ def train_model(
                     encoder_out, encoder_mask=tube_mask, decoder_mask=decoder_mask
                 )
 
-                output = decoder_out
                 recon_output = decoder_out[:, num_encoder_patches:]
 
                 # compare to ground truth and calculate loss
                 target_patches = model.patchify(signal)
                 target_patches_vit = rearrange(target_patches, "b ... d -> b (...) d")
-                target = target_patches_vit[:, decoder_mask]
-                loss = mse(recon_output, target)
+                recon_target = target_patches_vit[:, decoder_mask]
+                loss = mse(recon_output, recon_target)
 
                 # implement contrastive loss #TODO
                 # implement correlation loss #TODO
@@ -204,8 +205,6 @@ def train_model(
                 tube_idx = torch.nonzero(tube_mask).squeeze()
                 decoder_idx = torch.nonzero(decoder_mask).squeeze()
 
-                breakpoint()
-
                 recon_patches[:, tube_idx, :] = seen_output
                 recon_patches[:, decoder_idx, :] = recon_output
 
@@ -228,6 +227,7 @@ def train_model(
                     index=False,
                 )
 
+                # write as separate function in different file #TODO
                 # compare parts of the signal that were seen by the encoder
                 seen_output_signal = np.array(
                     rearrange(
@@ -276,6 +276,7 @@ def train_model(
                     index=False,
                 )
 
+                # write as separate function in different file #TODO
                 # compare parts of the signal that were not seen
                 recon_output_signal = np.array(
                     rearrange(
@@ -345,6 +346,19 @@ def train_model(
                 "test/loss": np.mean(test_losses[-(test_i + 1) :]),
             }
             progress_bar.set_postfix(**logs)
+
+        checkpoint = {
+            "epoch": epoch,
+            "model": model,
+            "optimizer": optimizer,
+            "lr_scheduler": lr_scheduler,
+        }
+
+        dir = os.getcwd() + f"/checkpoints/"
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+        torch.save(checkpoint, dir + f"{args.job_name}_checkpoint.pth")
 
         plot_losses(args, recon_losses, test_losses)
         if use_contrastive_loss:

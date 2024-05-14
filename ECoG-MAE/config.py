@@ -86,13 +86,34 @@ def model_setup(args, device, num_train_samples):
         * num_frames
         / frame_patch_size
     )
-    patch_dim = patch_size[0] * patch_size[1] * patch_size[2] * frame_patch_size
 
     num_encoder_patches = int(num_patches * (1 - args.tube_mask_ratio))
     num_decoder_patches = int(num_patches * (1 - args.decoder_mask_ratio))
     print("num_patches", num_patches)
     print("num_encoder_patches", num_encoder_patches)
     print("num_decoder_patches", num_decoder_patches)
+
+    if args.dim == 0:
+        dim = (
+            patch_size[0]
+            * patch_size[1]
+            * patch_size[2]
+            * frame_patch_size
+            * len(args.bands)
+        )
+    else:
+        dim = args.dim
+
+    if args.mlp_dim == 0:
+        mlp_dim = (
+            patch_size[0]
+            * patch_size[1]
+            * patch_size[2]
+            * frame_patch_size
+            * len(args.bands)
+        )
+    else:
+        mlp_dim = args.mlp_dim
 
     model = SimpleViT(
         image_size=img_size,  # depth, height, width
@@ -101,8 +122,8 @@ def model_setup(args, device, num_train_samples):
         frame_patch_size=frame_patch_size,
         depth=12,
         heads=12,
-        dim=patch_dim,  # original 512
-        mlp_dim=patch_dim,  # original 512
+        dim=dim,
+        mlp_dim=mlp_dim,
         num_encoder_patches=num_encoder_patches,
         num_decoder_patches=num_decoder_patches,
         channels=len(args.bands),
