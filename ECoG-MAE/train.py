@@ -77,6 +77,7 @@ def train_model(
         logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
     lrs, recon_losses, test_losses, contrastive_losses = [], [], [], []
+    signal_means, signal_stds = [], []
     test_corr = pd.DataFrame()
     seen_corr = pd.DataFrame()
     unseen_corr = pd.DataFrame()
@@ -105,7 +106,8 @@ def train_model(
                 # replace all NaN's with zeros #HACK
                 signal[torch.isnan(signal)] = 0
 
-                # plot_signal(args, np.array(signal.detach().to("cpu")))
+                signal_means.append(torch.mean(signal).detach().to("cpu").item())
+                signal_stds.append(torch.std(signal).detach().to("cpu").item())
 
                 tube_mask = get_tube_mask(args, num_patches, num_frames, device)
 
@@ -218,15 +220,6 @@ def train_model(
                 )
                 test_corr = pd.concat([test_corr, new_test_corr])
 
-                dir = os.getcwd() + f"/results/correlation/"
-                if not os.path.exists(dir):
-                    os.makedirs(dir)
-
-                test_corr.to_csv(
-                    dir + f"{args.job_name}_test_corr.csv",
-                    index=False,
-                )
-
                 # write as separate function in different file #TODO
                 # compare parts of the signal that were seen by the encoder
                 seen_output_signal = np.array(
@@ -266,15 +259,6 @@ def train_model(
                 )
 
                 seen_corr = pd.concat([seen_corr, new_seen_corr])
-
-                dir = os.getcwd() + f"/results/correlation/"
-                if not os.path.exists(dir):
-                    os.makedirs(dir)
-
-                seen_corr.to_csv(
-                    dir + f"{args.job_name}_seen_corr.csv",
-                    index=False,
-                )
 
                 # write as separate function in different file #TODO
                 # compare parts of the signal that were not seen
@@ -316,15 +300,6 @@ def train_model(
 
                 unseen_corr = pd.concat([unseen_corr, new_unseen_corr])
 
-                dir = os.getcwd() + f"/results/correlation/"
-                if not os.path.exists(dir):
-                    os.makedirs(dir)
-
-                unseen_corr.to_csv(
-                    dir + f"{args.job_name}_unseen_corr.csv",
-                    index=False,
-                )
-
                 # save original and reconstructed signal for plotting (highgamma for one sample for now)
                 if test_i == 0:
 
@@ -347,6 +322,7 @@ def train_model(
             }
             progress_bar.set_postfix(**logs)
 
+        # save model checkpoints
         checkpoint = {
             "epoch": epoch,
             "model": model,
@@ -360,9 +336,32 @@ def train_model(
 
         torch.save(checkpoint, dir + f"{args.job_name}_checkpoint.pth")
 
+        # save correlations
+        dir = os.getcwd() + f"/results/correlation/"
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+        test_corr.to_csv(
+            dir + f"{args.job_name}_test_corr.csv",
+            index=False,
+        )
+
+        seen_corr.to_csv(
+            dir + f"{args.job_name}_seen_corr.csv",
+            index=False,
+        )
+
+        unseen_corr.to_csv(
+            dir + f"{args.job_name}_unseen_corr.csv",
+            index=False,
+        )
+
+        # plot results
         plot_losses(args, recon_losses, test_losses)
         if use_contrastive_loss:
             plot_contrastive_loss(args, contrastive_losses)
+
+        plot_signal_stats(args, signal_means, signal_stds)
 
         plot_correlation(args, test_corr, "correlation")
         plot_correlation(args, seen_corr, "seen_correlation")

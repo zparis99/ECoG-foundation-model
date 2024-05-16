@@ -49,6 +49,25 @@ def plot_signal(args, signal):
     pdf_pages.close()
 
 
+def plot_signal_stats(args, signal_means, signal_stds):
+
+    plt.figure(figsize=(8, 3))
+    plt.plot(signal_means)
+    plt.title("Training signal means")
+    dir = os.getcwd() + f"/results/signals/"
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    plt.savefig(dir + f"{args.job_name}_signal_means.png")
+
+    plt.figure(figsize=(8, 3))
+    plt.plot(signal_stds)
+    plt.title("Training signal stds")
+    dir = os.getcwd() + f"/results/signals/"
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    plt.savefig(dir + f"{args.job_name}_signal_stds.png")
+
+
 def plot_losses(args, recon_losses, test_losses):
 
     plt.figure(figsize=(8, 3))

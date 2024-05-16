@@ -1,4 +1,17 @@
+import os
 import torch
+import numpy as np
+import random
+
+
+def seed_everything(seed=0, cudnn_deterministic=True):
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
 
 def count_params(model):
     total = sum(p.numel() for p in model.parameters())

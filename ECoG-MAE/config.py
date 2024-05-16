@@ -2,6 +2,7 @@
 
 import os
 import torch
+import numpy as np
 from accelerate import Accelerator, DeepSpeedPlugin
 
 import utils
@@ -23,6 +24,10 @@ def system_setup():
 
     # tf32 data type is faster than standard float32
     torch.backends.cuda.matmul.allow_tf32 = True
+
+    # seed all random functions
+    seed = 42
+    utils.seed_everything(seed)
 
     # accelerator = Accelerator(split_batches=False, mixed_precision="fp16")
     accelerator = Accelerator(split_batches=False)

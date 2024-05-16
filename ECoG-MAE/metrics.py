@@ -9,6 +9,25 @@ from einops import rearrange
 from tqdm import tqdm
 
 
+def get_signal_stats(args, signal, signal_stats, epoch, test_i):
+
+    res_list = []
+    i = 1
+    bands = ["theta", "alpha", "beta", "gamma", "highgamma"]
+
+    res = {}
+    res["epoch"] = epoch
+    res["test_i"] = test_i
+
+    x = signal[:, :, :, :, :, :].flatten()
+    res["mean"] = np.mean(x)
+    res["std"] = np.std(x)
+
+    new_signal_stats = pd.DataFrame(res)
+
+    return new_signal_stats
+
+
 def get_correlation(args, signal, recon_signal, epoch, test_i):
 
     # calculate correlation
@@ -20,7 +39,7 @@ def get_correlation(args, signal, recon_signal, epoch, test_i):
         for w in range(0, 8):
             res = {}
             res["epoch"] = epoch
-            res["train_i"] = test_i
+            res["test_i"] = test_i
             res["elec"] = i
             i += 1
             for c in range(0, len(args.bands)):
