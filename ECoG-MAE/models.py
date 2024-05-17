@@ -285,12 +285,21 @@ class SimpleViT(nn.Module):
             nn.LayerNorm(mlp_dim), nn.GELU(), nn.Linear(mlp_dim, self.patch_dim)
         )
 
-    def forward(self, x, encoder_mask=None, decoder_mask=None, verbose=False):
+    def forward(
+        self,
+        x,
+        encoder_mask=None,
+        decoder_mask=None,
+        tube_padding_mask=None,
+        decoder_padding_mask=None,
+        verbose=False,
+    ):
         # ENCODER
         if decoder_mask is None:
             if verbose:
                 print(x.shape)
-            x = self.patch_to_emb(self.patchify(x))
+            # x = self.patch_to_emb(self.patchify(x))
+            x = self.patchify(x)
             if verbose:
                 print(x.shape)
             x = rearrange(x, "b ... d -> b (...) d")
@@ -304,6 +313,8 @@ class SimpleViT(nn.Module):
             if verbose:
                 print("x", x.shape)
             x = x[:, encoder_mask]
+            x = x[:, tube_padding_mask]
+            x = self.patch_to_emb(x)
             if self.use_cls_token:
                 cls_tokens = self.cls_token.expand(len(x), -1, -1)
                 x = torch.cat((cls_tokens, x), dim=1)
@@ -319,7 +330,8 @@ class SimpleViT(nn.Module):
                 print(x.shape)
             x = self.encoder_to_decoder(x)
             B, _, _ = x.shape
-            N = len(decoder_mask[decoder_mask == True])
+            # N = len(decoder_mask[decoder_mask == True])
+            N = len(decoder_padding_mask[decoder_padding_mask == True])
             mask = None
             if not self.use_rope_emb:
                 if verbose:
@@ -327,8 +339,8 @@ class SimpleViT(nn.Module):
                 pos_embed = self.posemb_sincos_4d.to(x.device)
                 if verbose:
                     print("pe", pos_embed.shape)
-                pos_emd_encoder = pos_embed[encoder_mask]
-                pos_emd_decoder = pos_embed[decoder_mask]
+                pos_emd_encoder = pos_embed[encoder_mask][tube_padding_mask]
+                pos_emd_decoder = pos_embed[decoder_mask][decoder_padding_mask]
                 if verbose:
                     print("pos_emd_encoder", pos_emd_encoder.shape)
                 if verbose:
@@ -361,7 +373,7 @@ class SimpleViT(nn.Module):
                 )
             if verbose:
                 print("x_concat", x.shape)
-            x = self.decoder_transformer(x, mask=mask)
+            x = self.decoder_transformer(x, mask=decoder_padding_mask)
             if verbose:
                 print(x.shape)
             x = self.decoder_proj(x)

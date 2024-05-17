@@ -63,6 +63,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             padding = np.zeros((64, n_samples - len(sig[0])))
             sig = np.concatenate((sig, padding), axis=1)
 
+        chn_mask = torch.ones(64).to(torch.bool)
+
         # zero pad if channel is not included in grid #TODO a bit clunky right now, implement in a better and more flexible way
         # since we will load by index position of channel (so if a channel is not included it will load channel n+1 at position 1),
         # we correct that by inserting 0 at position n and shift value one upwards
@@ -73,6 +75,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             if np.isin(chn, raw.info.ch_names) == False:
                 # if not we insert 0 padding and shift upwards
                 sig = np.insert(sig, i, np.zeros((1, n_samples)), axis=0)
+                chn_mask[i] = False
 
         # delete items that were shifted upwards
         sig = sig[:64, :]
@@ -113,15 +116,18 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         # try smoothing window averaging instead #TODO
 
+        out = {}
         # rearrange into shape c*t*d*h*w, where
         # c = freq bands,
         # t = number of datapoints within a sample
         # d = depth (currently 1)
         # h = height of grid (currently 8)
         # w = width of grid (currently 8)
-        out = rearrange(
+        out["signal"] = rearrange(
             np.array(resampled, dtype=np.float32), "c (h w) t -> c t () h w", h=8, w=8
         )
+
+        out["chn_mask"] = rearrange(chn_mask, "(h w) -> h w", h=8, w=8)
 
         end = t.time()
 

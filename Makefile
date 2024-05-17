@@ -10,27 +10,27 @@ download-data:
 	$ python ECoG-MAE/download_data.py \
 		--access-token $(ACCESS_TOKEN)
 
-PREFIX =
+PREFIX = fixed-padding-512
 NORM = batch
 DATA_SIZE = 0.25
-BATCH_SIZE = 256
+BATCH_SIZE = 64
 NEW_FS = 20
 SAMPLE_LENGTH = 2
-PATCH_SIZE =  1 2 2
+PATCH_SIZE =  1 2 2  
 PATCH_SIZE_STR = 2
 FRAME_PATCH_SIZE = 4
-TUBE_MASK_RATIO = 0.75
+TUBE_MASK_RATIO = 0.5
 DECODER_MASK_RATIO = 0
 BANDS = "[[4,8],[8,13],[13,30],[30,55],[70,200]]"
 BANDS_STR = all
 NUM_EPOCHS = 10
 LEARNING_RATE = 0
 # 0 -> using learning rate scheduler 
-DIM = 0
+DIM = 512
 # 0 -> using patch dimensions, no projection to wider embeddings
-MLP_DIM = 0
+MLP_DIM = 512
 # 0 -> using patch dimensions, no projection to wider embeddings
-JOB_NAME = "$(USR)-$(DT)-$(PREFIX)-ds-$(DATA_SIZE)-bs-$(BATCH_SIZE)-norm-$(NORM)-fs-$(NEW_FS)-sl-$(SAMPLE_LENGTH)-ps-$(PATCH_SIZE_STR)-fps-$(FRAME_PATCH_SIZE)-dmr-$(DECODER_MASK_RATIO)-b-$(BANDS_STR)-ep-$(NUM_EPOCHS)-lr-$(LEARNING_RATE)"
+JOB_NAME = "$(USR)-$(DT)-$(PREFIX)-ds-$(DATA_SIZE)-bs-$(BATCH_SIZE)-norm-$(NORM)-fs-$(NEW_FS)-sl-$(SAMPLE_LENGTH)-ps-$(PATCH_SIZE_STR)-fps-$(FRAME_PATCH_SIZE)-tmr-$(TUBE_MASK_RATIO)-dmr-$(DECODER_MASK_RATIO)-b-$(BANDS_STR)-ep-$(NUM_EPOCHS)-lr-$(LEARNING_RATE)"
 CMD = sbatch --job-name=$(JOB_NAME) submit.sh
 
 # to debug, request interactive gpu node via salloc and select this option:
@@ -49,7 +49,6 @@ model-train:
 	$(CMD) ECoG-MAE/main.py \
 		--job-name $(JOB_NAME) \
 		--data-size $(DATA_SIZE) \
-		--sandbox \
 		--batch-size $(BATCH_SIZE) \
 		--env \
 		--norm $(NORM) \

@@ -7,46 +7,15 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.gridspec import GridSpec
 
 
-def plot_signal(args, signal):
+def plot_signal(args, signal, id):
 
-    dir = os.getcwd() + f"/results/signal"
+    plt.figure(figsize=(8, 3))
+    plt.plot(signal)
+    plt.title("Training signal")
+    dir = os.getcwd() + f"/results/signals/"
     if not os.path.exists(dir):
         os.makedirs(dir)
-
-    # plotting
-    pdf_pages = PdfPages(dir + f"{args.job_name}_signal.pdf")
-    colors = ["g", "r", "b", "c", "m"]
-
-    for h in range(1, 8):
-        for w in range(1, 8):
-
-            fig, axs = plt.subplots(len(args.bands), 1, figsize=(8, 10))
-
-            for i, ax in enumerate(axs):
-
-                ax.plot(
-                    np.squeeze(
-                        np.reshape(
-                            signal,
-                            (args.batch_size * args.new_fs * args.sample_length, -1),
-                        )
-                    ),
-                    color="b",
-                    lw=0.25,
-                )
-
-            # Set title for the entire PDF page
-            fig.suptitle(f"G" + str(h * h + w), fontsize=16)
-
-            # Adjust layout and save the subplot to the PDF file
-            fig.tight_layout(
-                rect=[0, 0.03, 1, 0.95]
-            )  # Add a little space at the top for the title
-            pdf_pages.savefig(fig)
-            plt.close(fig)
-
-    # Close the PDF file
-    pdf_pages.close()
+    plt.savefig(dir + f"{args.job_name}_{id}_signal.png")
 
 
 def plot_signal_stats(args, signal_means, signal_stds):

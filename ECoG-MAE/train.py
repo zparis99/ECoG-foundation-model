@@ -78,6 +78,7 @@ def train_model(
 
     lrs, recon_losses, test_losses, contrastive_losses = [], [], [], []
     signal_means, signal_stds = [], []
+    train_corr = pd.DataFrame()
     test_corr = pd.DataFrame()
     seen_corr = pd.DataFrame()
     unseen_corr = pd.DataFrame()
@@ -93,7 +94,7 @@ def train_model(
             for train_i, batch in enumerate(train_dl):
                 optimizer.zero_grad()
 
-                raw_signal = batch.to(device)
+                raw_signal = batch["signal"].to(device)
 
                 if args.norm == "batch":
                     # z-score normalization across batches
@@ -103,13 +104,29 @@ def train_model(
                 else:
                     signal = raw_signal
 
-                # replace all NaN's with zeros #HACK
-                signal[torch.isnan(signal)] = 0
+                padding_mask = ~torch.isnan(signal).to(device)
+                padding_mask = rearrange(
+                    model.patchify(padding_mask), "b ... d -> b (...) d"
+                )
+
+                padding_mask = torch.all(padding_mask, dim=0)
+                padding_mask = torch.all(padding_mask, dim=1)
+
+                # plot_signal(
+                #     args,
+                #     np.array(raw_signal[0, 4, :, 0, 0, 0].detach().to("cpu")),
+                #     "raw",
+                # )
+                # plot_signal(
+                #     args, np.array(signal[0, 4, :, 0, 0, 0].detach().to("cpu")), "norm"
+                # )
 
                 signal_means.append(torch.mean(signal).detach().to("cpu").item())
                 signal_stds.append(torch.std(signal).detach().to("cpu").item())
 
                 tube_mask = get_tube_mask(args, num_patches, num_frames, device)
+
+                tube_padding_mask = padding_mask[tube_mask]
 
                 if args.decoder_mask_ratio == 0:
 
@@ -122,22 +139,40 @@ def train_model(
                             args, num_frames, tube_mask, device
                         )
 
+                decoder_padding_mask = padding_mask[decoder_mask]
+
                 # encode the tube patches
-                encoder_out = model(signal, encoder_mask=tube_mask)
+                encoder_out = model(
+                    signal, encoder_mask=tube_mask, tube_padding_mask=tube_padding_mask
+                )
                 if use_cls_token:
                     enc_cls_token = encoder_out[:, :1, :]
 
                 # decode both the encoder_out patches and masked decoder patches
                 decoder_out = model(
-                    encoder_out, encoder_mask=tube_mask, decoder_mask=decoder_mask
+                    encoder_out,
+                    encoder_mask=tube_mask,
+                    decoder_mask=decoder_mask,
+                    tube_padding_mask=tube_padding_mask,
+                    decoder_padding_mask=decoder_padding_mask,
                 )
 
-                recon_output = decoder_out[:, num_encoder_patches:]
+                # recon_output = decoder_out[:, num_encoder_patches:]
+                recon_output = decoder_out[
+                    :, len(tube_padding_mask[tube_padding_mask == True]) :
+                ]
+
+                seen_output = decoder_out[
+                    :, : len(tube_padding_mask[tube_padding_mask] == True)
+                ]
 
                 # compare to ground truth and calculate loss
                 target_patches = model.patchify(signal)
                 target_patches_vit = rearrange(target_patches, "b ... d -> b (...) d")
-                recon_target = target_patches_vit[:, decoder_mask]
+                recon_target = target_patches_vit[:, decoder_mask][
+                    :, decoder_padding_mask
+                ]
+                seen_target = target_patches_vit[:, ~decoder_mask][:, tube_padding_mask]
                 loss = mse(recon_output, recon_target)
 
                 # implement contrastive loss #TODO
@@ -148,10 +183,31 @@ def train_model(
                 recon_losses.append(loss.item())
                 lrs.append(optimizer.param_groups[0]["lr"])
 
+                # reorganize into full signal
+                recon_patches = (
+                    torch.zeros(target_patches_vit.shape).fill_(float("nan")).to(device)
+                )
+
+                tube_idx = torch.nonzero(tube_mask & padding_mask).squeeze()
+                decoder_idx = torch.nonzero(decoder_mask & padding_mask).squeeze()
+
+                recon_patches[:, tube_idx, :] = seen_output
+                recon_patches[:, decoder_idx, :] = recon_output
+
+                recon_signal = np.array(
+                    model.unpatchify(recon_patches).detach().to("cpu")
+                )
+                signal = np.array(signal.detach().to("cpu"))
+
+                new_train_corr = get_correlation(
+                    args, signal, recon_signal, epoch, train_i
+                )
+                train_corr = pd.concat([train_corr, new_train_corr])
+
             model.eval()
             for test_i, batch in enumerate(test_dl):
 
-                raw_signal = batch.to(device)
+                raw_signal = batch["signal"].to(device)
 
                 if args.norm:
                     # z-score normalization across batches
@@ -161,10 +217,20 @@ def train_model(
                 else:
                     signal = raw_signal
 
-                # replace all NaN's with zeros #HACK
-                signal[torch.isnan(signal)] = 0
+                padding_mask = ~torch.isnan(signal).to(device)
+                padding_mask = rearrange(
+                    model.patchify(padding_mask), "b ... d -> b (...) d"
+                )
+
+                padding_mask = torch.all(padding_mask, dim=0)
+                padding_mask = torch.all(padding_mask, dim=1)
+
+                signal_means.append(torch.mean(signal).detach().to("cpu").item())
+                signal_stds.append(torch.std(signal).detach().to("cpu").item())
 
                 tube_mask = get_tube_mask(args, num_patches, num_frames, device)
+
+                tube_padding_mask = padding_mask[tube_mask]
 
                 if args.decoder_mask_ratio == 0:
 
@@ -177,35 +243,54 @@ def train_model(
                             args, num_frames, tube_mask, device
                         )
 
+                decoder_padding_mask = padding_mask[decoder_mask]
+
                 # encode the tube patches
-                encoder_out = model(signal, encoder_mask=tube_mask)
+                encoder_out = model(
+                    signal, encoder_mask=tube_mask, tube_padding_mask=tube_padding_mask
+                )
                 if use_cls_token:
                     enc_cls_token = encoder_out[:, :1, :]
 
                 # decode both the encoder_out patches and masked decoder patches
                 decoder_out = model(
-                    encoder_out, encoder_mask=tube_mask, decoder_mask=decoder_mask
+                    encoder_out,
+                    encoder_mask=tube_mask,
+                    decoder_mask=decoder_mask,
+                    tube_padding_mask=tube_padding_mask,
+                    decoder_padding_mask=decoder_padding_mask,
                 )
 
-                recon_output = decoder_out[:, num_encoder_patches:]
-                seen_output = decoder_out[:, :num_encoder_patches]
+                # recon_output = decoder_out[:, num_encoder_patches:]
+                recon_output = decoder_out[
+                    :, len(tube_padding_mask[tube_padding_mask == True]) :
+                ]
+
+                seen_output = decoder_out[
+                    :, : len(tube_padding_mask[tube_padding_mask] == True)
+                ]
 
                 # compare to ground truth and calculate loss
                 target_patches = model.patchify(signal)
                 target_patches_vit = rearrange(target_patches, "b ... d -> b (...) d")
-                recon_target = target_patches_vit[:, decoder_mask]
-                seen_target = target_patches_vit[:, ~decoder_mask]
+                recon_target = target_patches_vit[:, decoder_mask][
+                    :, decoder_padding_mask
+                ]
+                seen_target = target_patches_vit[:, ~decoder_mask][:, tube_padding_mask]
                 loss = mse(recon_output, recon_target)
+
                 test_losses.append(loss.item())
 
                 # implement contrastive loss #TODO
                 # implement correlation loss #TODO
 
                 # reorganize into full signal
-                recon_patches = torch.zeros(target_patches_vit.shape).to(device)
+                recon_patches = (
+                    torch.zeros(target_patches_vit.shape).fill_(float("nan")).to(device)
+                )
 
-                tube_idx = torch.nonzero(tube_mask).squeeze()
-                decoder_idx = torch.nonzero(decoder_mask).squeeze()
+                tube_idx = torch.nonzero(tube_mask & padding_mask).squeeze()
+                decoder_idx = torch.nonzero(decoder_mask & padding_mask).squeeze()
 
                 recon_patches[:, tube_idx, :] = seen_output
                 recon_patches[:, decoder_idx, :] = recon_output
@@ -220,85 +305,85 @@ def train_model(
                 )
                 test_corr = pd.concat([test_corr, new_test_corr])
 
-                # write as separate function in different file #TODO
-                # compare parts of the signal that were seen by the encoder
-                seen_output_signal = np.array(
-                    rearrange(
-                        seen_output,
-                        "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-                        c=len(args.bands),
-                        d=1,
-                        s=4,
-                        f=num_frames // args.frame_patch_size,
-                        pd=1,
-                        ps=4,
-                        pf=args.frame_patch_size,
-                    )
-                    .cpu()
-                    .detach()
-                )
+                # # write as separate function in different file #TODO
+                # # compare parts of the signal that were seen by the encoder
+                # seen_output_signal = np.array(
+                #     rearrange(
+                #         seen_output,
+                #         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
+                #         c=len(args.bands),
+                #         d=1,
+                #         s=4,
+                #         f=num_frames // args.frame_patch_size,
+                #         pd=1,
+                #         ps=4,
+                #         pf=args.frame_patch_size,
+                #     )
+                #     .cpu()
+                #     .detach()
+                # )
 
-                seen_target_signal = np.array(
-                    rearrange(
-                        seen_target,
-                        "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-                        c=len(args.bands),
-                        d=1,
-                        s=4,
-                        f=num_frames // args.frame_patch_size,
-                        pd=1,
-                        ps=4,
-                        pf=args.frame_patch_size,
-                    )
-                    .cpu()
-                    .detach()
-                )
+                # seen_target_signal = np.array(
+                #     rearrange(
+                #         seen_target,
+                #         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
+                #         c=len(args.bands),
+                #         d=1,
+                #         s=4,
+                #         f=num_frames // args.frame_patch_size,
+                #         pd=1,
+                #         ps=4,
+                #         pf=args.frame_patch_size,
+                #     )
+                #     .cpu()
+                #     .detach()
+                # )
 
-                new_seen_corr = get_correlation_across_elecs(
-                    args, seen_output_signal, seen_target_signal, epoch, test_i
-                )
+                # new_seen_corr = get_correlation_across_elecs(
+                #     args, seen_output_signal, seen_target_signal, epoch, test_i
+                # )
 
-                seen_corr = pd.concat([seen_corr, new_seen_corr])
+                # seen_corr = pd.concat([seen_corr, new_seen_corr])
 
-                # write as separate function in different file #TODO
-                # compare parts of the signal that were not seen
-                recon_output_signal = np.array(
-                    rearrange(
-                        recon_output,
-                        "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-                        c=len(args.bands),
-                        d=1,
-                        s=12,
-                        f=num_frames // args.frame_patch_size,
-                        pd=1,
-                        ps=4,
-                        pf=args.frame_patch_size,
-                    )
-                    .cpu()
-                    .detach()
-                )
+                # # write as separate function in different file #TODO
+                # # compare parts of the signal that were not seen
+                # recon_output_signal = np.array(
+                #     rearrange(
+                #         recon_output,
+                #         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
+                #         c=len(args.bands),
+                #         d=1,
+                #         s=12,
+                #         f=num_frames // args.frame_patch_size,
+                #         pd=1,
+                #         ps=4,
+                #         pf=args.frame_patch_size,
+                #     )
+                #     .cpu()
+                #     .detach()
+                # )
 
-                recon_target_signal = np.array(
-                    rearrange(
-                        recon_target,
-                        "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-                        c=len(args.bands),
-                        d=1,
-                        s=12,
-                        f=num_frames // args.frame_patch_size,
-                        pd=1,
-                        ps=4,
-                        pf=args.frame_patch_size,
-                    )
-                    .cpu()
-                    .detach()
-                )
+                # recon_target_signal = np.array(
+                #     rearrange(
+                #         recon_target,
+                #         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
+                #         c=len(args.bands),
+                #         d=1,
+                #         s=12,
+                #         f=num_frames // args.frame_patch_size,
+                #         pd=1,
+                #         ps=4,
+                #         pf=args.frame_patch_size,
+                #     )
+                #     .cpu()
+                #     .detach()
+                # )
 
-                new_unseen_corr = get_correlation_across_elecs(
-                    args, recon_output_signal, recon_target_signal, epoch, test_i
-                )
+                # new_unseen_corr = get_correlation_across_elecs(
+                #     args, recon_output_signal, recon_target_signal, epoch, test_i
+                # )
 
-                unseen_corr = pd.concat([unseen_corr, new_unseen_corr])
+                # unseen_corr = pd.concat([unseen_corr, new_unseen_corr])
 
                 # save original and reconstructed signal for plotting (highgamma for one sample for now)
                 if test_i == 0:
@@ -341,20 +426,25 @@ def train_model(
         if not os.path.exists(dir):
             os.makedirs(dir)
 
+        train_corr.to_csv(
+            dir + f"{args.job_name}_train_corr.csv",
+            index=False,
+        )
+
         test_corr.to_csv(
             dir + f"{args.job_name}_test_corr.csv",
             index=False,
         )
 
-        seen_corr.to_csv(
-            dir + f"{args.job_name}_seen_corr.csv",
-            index=False,
-        )
+        # seen_corr.to_csv(
+        #     dir + f"{args.job_name}_seen_corr.csv",
+        #     index=False,
+        # )
 
-        unseen_corr.to_csv(
-            dir + f"{args.job_name}_unseen_corr.csv",
-            index=False,
-        )
+        # unseen_corr.to_csv(
+        #     dir + f"{args.job_name}_unseen_corr.csv",
+        #     index=False,
+        # )
 
         # plot results
         plot_losses(args, recon_losses, test_losses)
@@ -364,8 +454,9 @@ def train_model(
         plot_signal_stats(args, signal_means, signal_stds)
 
         plot_correlation(args, test_corr, "correlation")
-        plot_correlation(args, seen_corr, "seen_correlation")
-        plot_correlation(args, unseen_corr, "unseen_correlation")
+        plot_correlation(args, train_corr, "correlation")
+        # plot_correlation(args, seen_corr, "seen_correlation")
+        # plot_correlation(args, unseen_corr, "unseen_correlation")
         plot_recon_signals(args, model_recon)
 
     return model
