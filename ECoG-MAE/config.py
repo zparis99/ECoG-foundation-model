@@ -1,6 +1,7 @@
 # TODO implement learning rate scheduler for better performance - initially Paul had implemented one, but we are using a fixed LR for now ...
 
 import os
+import math
 import torch
 import numpy as np
 from accelerate import Accelerator, DeepSpeedPlugin
@@ -168,7 +169,7 @@ def model_setup(args, device, num_train_samples):
         optimizer,
         max_lr=max_lr,
         epochs=args.num_epochs,
-        steps_per_epoch=num_train_samples,
+        steps_per_epoch=math.ceil(num_train_samples / args.batch_size),
     )
 
     print("\nDone with model preparations!")
