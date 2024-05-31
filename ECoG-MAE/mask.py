@@ -1,14 +1,30 @@
 import torch
+from einops import rearrange
 
 
-def get_tube_mask(args, num_patches, num_frames, device):
+def get_padding_mask(signal, model, device):
+
+    padding_mask = ~torch.isnan(signal).to(device)
+    padding_mask = rearrange(model.patchify(padding_mask), "b ... d -> b (...) d")
+
+    # TODO make flexible for handling ps > 1
+    padding_mask = torch.all(padding_mask, dim=0)
+    padding_mask = torch.all(padding_mask, dim=1)
+
+    return padding_mask
+
+
+def get_tube_mask(args, num_patches, num_frames, padding_mask, device):
 
     tube_mask = (
         torch.zeros(num_patches // (num_frames // args.frame_patch_size))
         .to(device)
         .to(torch.bool)
     )
-    mask_idx_candidates = torch.randperm(len(tube_mask))
+
+    # only select idx of existing channels here
+    chn_idx = torch.nonzero(padding_mask[: len(tube_mask)])
+    mask_idx_candidates = chn_idx[torch.randperm(len(chn_idx))]
     tube_idx = mask_idx_candidates[
         : int(
             num_patches

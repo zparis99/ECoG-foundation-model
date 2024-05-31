@@ -47,6 +47,28 @@ class FeedForward(nn.Module):
         return self.net(x)
 
 
+class MaskedLayerNorm(torch.nn.Module):
+    def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
+        super(MaskedLayerNorm, self).__init__()
+        self.layer_norm = torch.nn.LayerNorm(normalized_shape, eps, elementwise_affine)
+
+    def forward(self, x, mask):
+
+        mask = mask.int().unsqueeze(-1)
+
+        masked_x = x * mask
+        mean = (
+            torch.sum(masked_x, dim=None).item() / torch.count_nonzero(masked_x)
+        ).item()
+        std = torch.sqrt(
+            torch.sum((masked_x - mean) ** 2) / (torch.count_nonzero(masked_x) - 1)
+        ).item()
+
+        normalized_x = ((x - mean) / std + self.layer_norm.eps) * mask
+
+        return normalized_x
+
+
 class Attention(nn.Module):
     def __init__(
         self,
@@ -174,8 +196,6 @@ class SimpleViT(nn.Module):
         depth,
         heads,
         mlp_dim,
-        num_encoder_patches,
-        num_decoder_patches,
         channels,
         dim_head=64,
         use_rope_emb: bool = False,
@@ -198,6 +218,9 @@ class SimpleViT(nn.Module):
         self.patch_dim = (
             channels * patch_depth * patch_height * patch_width * frame_patch_size
         )
+
+        self.dim = dim
+        self.mlp_dim = mlp_dim
 
         # b = batch
         # c = channels (frequency bands)
@@ -228,11 +251,15 @@ class SimpleViT(nn.Module):
             )
         )
 
-        self.patch_to_emb = nn.Sequential(
-            nn.LayerNorm(self.patch_dim),
-            nn.Linear(self.patch_dim, dim),
-            nn.LayerNorm(dim),
-        )
+        # self.patch_to_emb = nn.Sequential(
+        #     nn.LayerNorm(self.patch_dim),
+        #     nn.Linear(self.patch_dim, dim),
+        #     nn.LayerNorm(dim),
+        # )
+
+        self.layer_norm = MaskedLayerNorm(dim)
+
+        self.patch_to_emb = nn.Linear(self.patch_dim, self.dim)
 
         self.encoder_transformer = Transformer(
             dim,
@@ -289,8 +316,8 @@ class SimpleViT(nn.Module):
         self,
         x,
         encoder_mask=None,
-        decoder_mask=None,
         tube_padding_mask=None,
+        decoder_mask=None,
         decoder_padding_mask=None,
         verbose=False,
     ):
@@ -298,14 +325,16 @@ class SimpleViT(nn.Module):
         if decoder_mask is None:
             if verbose:
                 print(x.shape)
-            # x = self.patch_to_emb(self.patchify(x))
             x = self.patchify(x)
-            if verbose:
-                print(x.shape)
             x = rearrange(x, "b ... d -> b (...) d")
+            # TODO wrap into nn.Sequential (?)
+            x = self.layer_norm(x, tube_padding_mask)
+            x = self.patch_to_emb(x)
+            x = self.layer_norm(x, tube_padding_mask)
             if verbose:
                 print(x.shape)
-
+            if verbose:
+                print(x.shape)
             if not self.use_rope_emb:
                 if verbose:
                     print("pe", self.posemb_sincos_4d.shape)
@@ -313,8 +342,6 @@ class SimpleViT(nn.Module):
             if verbose:
                 print("x", x.shape)
             x = x[:, encoder_mask]
-            x = x[:, tube_padding_mask]
-            x = self.patch_to_emb(x)
             if self.use_cls_token:
                 cls_tokens = self.cls_token.expand(len(x), -1, -1)
                 x = torch.cat((cls_tokens, x), dim=1)
@@ -339,7 +366,7 @@ class SimpleViT(nn.Module):
                 pos_embed = self.posemb_sincos_4d.to(x.device)
                 if verbose:
                     print("pe", pos_embed.shape)
-                pos_emd_encoder = pos_embed[encoder_mask][tube_padding_mask]
+                pos_emd_encoder = pos_embed[encoder_mask]
                 pos_emd_decoder = pos_embed[decoder_mask][decoder_padding_mask]
                 if verbose:
                     print("pos_emd_encoder", pos_emd_encoder.shape)
@@ -376,6 +403,7 @@ class SimpleViT(nn.Module):
             x = self.decoder_transformer(x, mask=decoder_padding_mask)
             if verbose:
                 print(x.shape)
+            # TODO check if all that makes sense
             x = self.decoder_proj(x)
             if verbose:
                 print("proj", x.shape)

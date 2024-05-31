@@ -1,4 +1,5 @@
 import torch
+import sys
 from parser import arg_parser
 from config import system_setup, model_setup
 from loader import dl_setup
@@ -15,10 +16,11 @@ def main(args):
         args, device, num_train_samples
     )
 
-    if args.debug:
+    if args.test_loader:
 
         test_loader(args, train_dl, test_dl)
-        test_model(args, device, model, num_patches)
+        # test_model(args, device, model, num_patches)
+        sys.exit("Stopping the script")
 
     model = train_model(
         args,
@@ -33,9 +35,6 @@ def main(args):
         data_type,
         local_rank,
     )
-
-    # save model ckpt
-    torch.save({"model_state_dict": model.state_dict()}, f"{args.job_name}_last.ckpt")
 
 
 if __name__ == "__main__":

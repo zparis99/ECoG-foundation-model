@@ -82,12 +82,12 @@ def model_setup(args, device, num_train_samples):
     num_frames = args.sample_length * args.new_fs
 
     img_size = (1, 8, 8)
-    patch_size = tuple(args.patch_size)
+    patch_dims = tuple(args.patch_dims)
     frame_patch_size = args.frame_patch_size
     num_patches = int(  # Defining the number of patches
-        (img_size[0] / patch_size[0])
-        * (img_size[1] / patch_size[1])
-        * (img_size[2] / patch_size[2])
+        (img_size[0] / patch_dims[0])
+        * (img_size[1] / patch_dims[1])
+        * (img_size[2] / patch_dims[2])
         * num_frames
         / frame_patch_size
     )
@@ -100,9 +100,9 @@ def model_setup(args, device, num_train_samples):
 
     if args.dim == 0:
         dim = (
-            patch_size[0]
-            * patch_size[1]
-            * patch_size[2]
+            patch_dims[0]
+            * patch_dims[1]
+            * patch_dims[2]
             * frame_patch_size
             * len(args.bands)
         )
@@ -111,9 +111,9 @@ def model_setup(args, device, num_train_samples):
 
     if args.mlp_dim == 0:
         mlp_dim = (
-            patch_size[0]
-            * patch_size[1]
-            * patch_size[2]
+            patch_dims[0]
+            * patch_dims[1]
+            * patch_dims[2]
             * frame_patch_size
             * len(args.bands)
         )
@@ -122,15 +122,13 @@ def model_setup(args, device, num_train_samples):
 
     model = SimpleViT(
         image_size=img_size,  # depth, height, width
-        image_patch_size=patch_size,  # depth, height, width patch size - change width from patch_size to 1
+        image_patch_size=patch_dims,  # depth, height, width patch size - change width from patch_dims to 1
         frames=num_frames,
         frame_patch_size=frame_patch_size,
         depth=12,
         heads=12,
         dim=dim,
         mlp_dim=mlp_dim,
-        num_encoder_patches=num_encoder_patches,
-        num_decoder_patches=num_decoder_patches,
         channels=len(args.bands),
         use_rope_emb=False,
         use_cls_token=args.use_cls_token,

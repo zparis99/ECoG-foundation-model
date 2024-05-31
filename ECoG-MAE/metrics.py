@@ -30,6 +30,9 @@ def get_signal_stats(args, signal, signal_stats, epoch, dl_i):
 
 def get_correlation(args, signal, recon_signal, epoch, dl_i):
 
+    signal = np.array(signal.detach().detach().cpu())
+    recon_signal = np.array(recon_signal.detach().cpu())
+
     # calculate correlation
     res_list = []
     i = 1
@@ -68,6 +71,9 @@ def get_correlation(args, signal, recon_signal, epoch, dl_i):
 
 
 def get_correlation_across_elecs(args, signal, recon_signal, epoch, dl_i):
+
+    signal = np.array(signal.detach().detach().cpu())
+    recon_signal = np.array(recon_signal.detach().cpu())
 
     # calculate correlation
     res_list = []
@@ -114,6 +120,9 @@ def get_correlation_across_elecs(args, signal, recon_signal, epoch, dl_i):
 
 
 def get_model_recon(signal, recon_signal, epoch):
+
+    signal = np.array(signal.detach().detach().cpu())
+    recon_signal = np.array(recon_signal.detach().cpu())
 
     res_list = []
     i = 1

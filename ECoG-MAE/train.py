@@ -9,6 +9,7 @@ from einops import rearrange
 from tqdm import tqdm
 
 from mask import *
+from utils import *
 from metrics import *
 from plot import *
 
@@ -59,9 +60,6 @@ def train_model(
     torch.cuda.empty_cache()
     model.to(device)
 
-    num_encoder_patches = int(num_patches * (1 - args.tube_mask_ratio))
-    num_decoder_patches = int(num_patches * (1 - args.decoder_mask_ratio))
-
     num_frames = args.sample_length * args.new_fs
 
     epoch = 0
@@ -76,13 +74,23 @@ def train_model(
     if use_contrastive_loss:
         logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
-    lrs, recon_losses, test_losses, contrastive_losses = [], [], [], []
+    (
+        lrs,
+        train_losses,
+        test_losses,
+        seen_train_losses,
+        seen_test_losses,
+        contrastive_losses,
+    ) = ([], [], [], [], [], [])
+
     signal_means, signal_stds = [], []
     train_corr = pd.DataFrame()
     test_corr = pd.DataFrame()
     seen_corr = pd.DataFrame()
     unseen_corr = pd.DataFrame()
     model_recon = pd.DataFrame()
+    trains = []
+    tests = []
 
     progress_bar = tqdm(
         range(epoch, args.num_epochs), ncols=1200, disable=(local_rank != 0)
@@ -94,42 +102,34 @@ def train_model(
             for train_i, batch in enumerate(train_dl):
                 optimizer.zero_grad()
 
-                raw_signal = batch["signal"].to(device)
+                signal = batch.to(device)
 
-                if args.norm == "batch":
-                    # z-score normalization across batches
-                    mean = torch.mean(raw_signal, dim=(0, 2), keepdim=True)
-                    std = torch.std(raw_signal, dim=(0, 2), keepdim=True)
-                    signal = (raw_signal - mean) / std
-                else:
-                    signal = raw_signal
-
-                padding_mask = ~torch.isnan(signal).to(device)
-                padding_mask = rearrange(
-                    model.patchify(padding_mask), "b ... d -> b (...) d"
+                trains.append(
+                    {
+                        "train batch ": str(train_i),
+                        "num_samples": str(signal.shape),
+                    }
                 )
-
-                padding_mask = torch.all(padding_mask, dim=0)
-                padding_mask = torch.all(padding_mask, dim=1)
-
-                # plot_signal(
-                #     args,
-                #     np.array(raw_signal[0, 4, :, 0, 0, 0].detach().to("cpu")),
-                #     "raw",
-                # )
-                # plot_signal(
-                #     args, np.array(signal[0, 4, :, 0, 0, 0].detach().to("cpu")), "norm"
-                # )
 
                 signal_means.append(torch.mean(signal).detach().to("cpu").item())
                 signal_stds.append(torch.std(signal).detach().to("cpu").item())
 
-                tube_mask = get_tube_mask(args, num_patches, num_frames, device)
+                if args.norm == "batch":
+                    signal = normalize(signal)
 
-                tube_padding_mask = padding_mask[tube_mask]
+                # mask indicating positions of channels that were rejected during preprocessing
+                padding_mask = get_padding_mask(args, signal, model, device)
 
+                # convert nans to 0
+                signal = torch.nan_to_num(signal)
+
+                # masking out parts of the input to the encoder (same mask across frames)
+                tube_mask = get_tube_mask(
+                    args, num_patches, num_frames, padding_mask, device
+                )
+
+                # selecting parts of the signal for the decoder to reconstruct
                 if args.decoder_mask_ratio == 0:
-
                     decoder_mask = get_decoder_mask(
                         args, num_patches, tube_mask, device
                     )
@@ -139,101 +139,119 @@ def train_model(
                             args, num_frames, tube_mask, device
                         )
 
+                # make sure the decoder only reconstructs channels that were not discarded during preprocessing
                 decoder_padding_mask = padding_mask[decoder_mask]
 
                 # encode the tube patches
                 encoder_out = model(
-                    signal, encoder_mask=tube_mask, tube_padding_mask=tube_padding_mask
+                    signal, encoder_mask=tube_mask, tube_padding_mask=padding_mask
                 )
-                if use_cls_token:
-                    enc_cls_token = encoder_out[:, :1, :]
 
                 # decode both the encoder_out patches and masked decoder patches
                 decoder_out = model(
                     encoder_out,
                     encoder_mask=tube_mask,
                     decoder_mask=decoder_mask,
-                    tube_padding_mask=tube_padding_mask,
                     decoder_padding_mask=decoder_padding_mask,
                 )
 
-                # recon_output = decoder_out[:, num_encoder_patches:]
-                recon_output = decoder_out[
-                    :, len(tube_padding_mask[tube_padding_mask == True]) :
-                ]
-
-                seen_output = decoder_out[
-                    :, : len(tube_padding_mask[tube_padding_mask] == True)
-                ]
-
-                # compare to ground truth and calculate loss
-                target_patches = model.patchify(signal)
-                target_patches_vit = rearrange(target_patches, "b ... d -> b (...) d")
-                recon_target = target_patches_vit[:, decoder_mask][
-                    :, decoder_padding_mask
-                ]
-                seen_target = target_patches_vit[:, ~decoder_mask][:, tube_padding_mask]
-                loss = mse(recon_output, recon_target)
-
-                # implement contrastive loss #TODO
-                # implement correlation loss #TODO
-
-                accelerator.backward(loss)
-                optimizer.step()
-                recon_losses.append(loss.item())
-                lrs.append(optimizer.param_groups[0]["lr"])
-
-                # reorganize into full signal
-                recon_patches = (
-                    torch.zeros(target_patches_vit.shape).fill_(float("nan")).to(device)
+                # rearrange reconstructed and original patches (seen and not seen by encoder) into signal
+                (
+                    recon_signal,
+                    recon_output,
+                    recon_target,
+                    seen_output,
+                    seen_target,
+                    seen_target_signal,
+                    seen_output_signal,
+                    recon_target_signal,
+                    recon_output_signal,
+                ) = rearrange_signals(
+                    args,
+                    model,
+                    device,
+                    signal,
+                    num_frames,
+                    decoder_out,
+                    padding_mask,
+                    tube_mask,
+                    decoder_mask,
+                    decoder_padding_mask,
                 )
 
-                tube_idx = torch.nonzero(tube_mask & padding_mask).squeeze()
-                decoder_idx = torch.nonzero(decoder_mask & padding_mask).squeeze()
-
-                recon_patches[:, tube_idx, :] = seen_output
-                recon_patches[:, decoder_idx, :] = recon_output
-
-                recon_signal = np.array(
-                    model.unpatchify(recon_patches).detach().to("cpu")
-                )
-                signal = np.array(signal.detach().to("cpu"))
-
+                # get correlation between original and reconstructed signal
                 new_train_corr = get_correlation(
                     args, signal, recon_signal, epoch, train_i
                 )
                 train_corr = pd.concat([train_corr, new_train_corr])
 
+                # get correlation between original and reconstructed signal seen by the encoder
+                new_seen_corr = get_correlation_across_elecs(
+                    args, seen_target_signal, seen_output_signal, epoch, train_i
+                )
+
+                seen_corr = pd.concat([seen_corr, new_seen_corr])
+
+                # get correlation between original and reconstructed signal not seen by the encoder
+                new_unseen_corr = get_correlation_across_elecs(
+                    args, recon_target_signal, recon_output_signal, epoch, train_i
+                )
+
+                unseen_corr = pd.concat([unseen_corr, new_unseen_corr])
+
+                # calculate loss
+                if args.loss == "patch":
+                    loss = mse(recon_output, recon_target)
+                    seen_loss = mse(seen_output, seen_target)
+                elif args.loss == "signal":
+                    loss = mse(recon_output_signal, recon_target_signal)
+                    seen_loss = mse(seen_output_signal, seen_target_signal)
+                elif args.loss == "both":
+                    loss = mse(recon_output, recon_target) + mse(
+                        recon_output_signal, recon_target_signal
+                    )
+                    seen_loss = mse(seen_output, seen_target) + mse(
+                        seen_output_signal, seen_target_signal
+                    )
+
+                accelerator.backward(loss)
+                optimizer.step()
+
+                train_losses.append(loss.item())
+                seen_train_losses.append(seen_loss.item())
+                lrs.append(optimizer.param_groups[0]["lr"])
+
             model.eval()
             for test_i, batch in enumerate(test_dl):
 
-                raw_signal = batch["signal"].to(device)
+                signal = batch.to(device)
 
-                if args.norm:
-                    # z-score normalization across batches
-                    mean = torch.mean(raw_signal, dim=(0, 2), keepdim=True)
-                    std = torch.std(raw_signal, dim=(0, 2), keepdim=True)
-                    signal = (raw_signal - mean) / std
-                else:
-                    signal = raw_signal
-
-                padding_mask = ~torch.isnan(signal).to(device)
-                padding_mask = rearrange(
-                    model.patchify(padding_mask), "b ... d -> b (...) d"
+                tests.append(
+                    {
+                        "test batch ": str(test_i),
+                        "num_samples": str(signal.shape),
+                    }
                 )
-
-                padding_mask = torch.all(padding_mask, dim=0)
-                padding_mask = torch.all(padding_mask, dim=1)
 
                 signal_means.append(torch.mean(signal).detach().to("cpu").item())
                 signal_stds.append(torch.std(signal).detach().to("cpu").item())
 
-                tube_mask = get_tube_mask(args, num_patches, num_frames, device)
+                if args.norm == "batch":
+                    signal = normalize(signal)
 
-                tube_padding_mask = padding_mask[tube_mask]
+                # mask indicating positions of channels that were rejected during preprocessing
+                padding_mask = get_padding_mask(args, signal, model, device)
 
+                # convert nans to 0
+                signal = torch.nan_to_num(signal)
+
+                # masking out parts of the input to the encoder (same mask across frames)
+                tube_mask = get_tube_mask(
+                    args, num_patches, num_frames, padding_mask, device
+                )
+
+                # selecting parts of the signal for the decoder to reconstruct
                 if args.decoder_mask_ratio == 0:
-
                     decoder_mask = get_decoder_mask(
                         args, num_patches, tube_mask, device
                     )
@@ -243,150 +261,76 @@ def train_model(
                             args, num_frames, tube_mask, device
                         )
 
+                # make sure the decoder only reconstructs channels that were not discarded during preprocessing
                 decoder_padding_mask = padding_mask[decoder_mask]
 
                 # encode the tube patches
                 encoder_out = model(
-                    signal, encoder_mask=tube_mask, tube_padding_mask=tube_padding_mask
+                    signal, encoder_mask=tube_mask, tube_padding_mask=padding_mask
                 )
-                if use_cls_token:
-                    enc_cls_token = encoder_out[:, :1, :]
 
                 # decode both the encoder_out patches and masked decoder patches
                 decoder_out = model(
                     encoder_out,
                     encoder_mask=tube_mask,
                     decoder_mask=decoder_mask,
-                    tube_padding_mask=tube_padding_mask,
                     decoder_padding_mask=decoder_padding_mask,
                 )
 
-                # recon_output = decoder_out[:, num_encoder_patches:]
-                recon_output = decoder_out[
-                    :, len(tube_padding_mask[tube_padding_mask == True]) :
-                ]
-
-                seen_output = decoder_out[
-                    :, : len(tube_padding_mask[tube_padding_mask] == True)
-                ]
-
-                # compare to ground truth and calculate loss
-                target_patches = model.patchify(signal)
-                target_patches_vit = rearrange(target_patches, "b ... d -> b (...) d")
-                recon_target = target_patches_vit[:, decoder_mask][
-                    :, decoder_padding_mask
-                ]
-                seen_target = target_patches_vit[:, ~decoder_mask][:, tube_padding_mask]
-                loss = mse(recon_output, recon_target)
-
-                test_losses.append(loss.item())
-
-                # implement contrastive loss #TODO
-                # implement correlation loss #TODO
-
-                # reorganize into full signal
-                recon_patches = (
-                    torch.zeros(target_patches_vit.shape).fill_(float("nan")).to(device)
+                # rearrange reconstructed and original patches (seen and not seen by encoder) into signal
+                (
+                    recon_signal,
+                    recon_output,
+                    recon_target,
+                    seen_output,
+                    seen_target,
+                    seen_target_signal,
+                    seen_output_signal,
+                    recon_target_signal,
+                    recon_output_signal,
+                ) = rearrange_signals(
+                    args,
+                    model,
+                    device,
+                    signal,
+                    num_frames,
+                    decoder_out,
+                    padding_mask,
+                    tube_mask,
+                    decoder_mask,
+                    decoder_padding_mask,
                 )
-
-                tube_idx = torch.nonzero(tube_mask & padding_mask).squeeze()
-                decoder_idx = torch.nonzero(decoder_mask & padding_mask).squeeze()
-
-                recon_patches[:, tube_idx, :] = seen_output
-                recon_patches[:, decoder_idx, :] = recon_output
-
-                recon_signal = np.array(
-                    model.unpatchify(recon_patches).detach().to("cpu")
-                )
-                signal = np.array(signal.detach().to("cpu"))
 
                 new_test_corr = get_correlation(
                     args, signal, recon_signal, epoch, test_i
                 )
                 test_corr = pd.concat([test_corr, new_test_corr])
 
-                # # write as separate function in different file #TODO
-                # # compare parts of the signal that were seen by the encoder
-                # seen_output_signal = np.array(
-                #     rearrange(
-                #         seen_output,
-                #         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-                #         c=len(args.bands),
-                #         d=1,
-                #         s=4,
-                #         f=num_frames // args.frame_patch_size,
-                #         pd=1,
-                #         ps=4,
-                #         pf=args.frame_patch_size,
-                #     )
-                #     .cpu()
-                #     .detach()
-                # )
+                # calculate loss
+                if args.loss == "patch":
+                    loss = mse(recon_output, recon_target)
+                    seen_loss = mse(seen_output, seen_target)
+                elif args.loss == "signal":
+                    loss = mse(recon_output_signal, recon_target_signal)
+                    seen_loss = mse(seen_output_signal, seen_target_signal)
+                elif args.loss == "both":
+                    loss = mse(recon_output, recon_target) + mse(
+                        recon_output_signal, recon_target_signal
+                    )
+                    seen_loss = mse(seen_output, seen_target) + mse(
+                        seen_output_signal, seen_target_signal
+                    )
 
-                # seen_target_signal = np.array(
-                #     rearrange(
-                #         seen_target,
-                #         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-                #         c=len(args.bands),
-                #         d=1,
-                #         s=4,
-                #         f=num_frames // args.frame_patch_size,
-                #         pd=1,
-                #         ps=4,
-                #         pf=args.frame_patch_size,
-                #     )
-                #     .cpu()
-                #     .detach()
-                # )
-
-                # new_seen_corr = get_correlation_across_elecs(
-                #     args, seen_output_signal, seen_target_signal, epoch, test_i
-                # )
-
-                # seen_corr = pd.concat([seen_corr, new_seen_corr])
-
-                # # write as separate function in different file #TODO
-                # # compare parts of the signal that were not seen
-                # recon_output_signal = np.array(
-                #     rearrange(
-                #         recon_output,
-                #         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-                #         c=len(args.bands),
-                #         d=1,
-                #         s=12,
-                #         f=num_frames // args.frame_patch_size,
-                #         pd=1,
-                #         ps=4,
-                #         pf=args.frame_patch_size,
-                #     )
-                #     .cpu()
-                #     .detach()
-                # )
-
-                # recon_target_signal = np.array(
-                #     rearrange(
-                #         recon_target,
-                #         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-                #         c=len(args.bands),
-                #         d=1,
-                #         s=12,
-                #         f=num_frames // args.frame_patch_size,
-                #         pd=1,
-                #         ps=4,
-                #         pf=args.frame_patch_size,
-                #     )
-                #     .cpu()
-                #     .detach()
-                # )
-
-                # new_unseen_corr = get_correlation_across_elecs(
-                #     args, recon_output_signal, recon_target_signal, epoch, test_i
-                # )
-
-                # unseen_corr = pd.concat([unseen_corr, new_unseen_corr])
+                test_losses.append(loss.item())
+                seen_test_losses.append(seen_loss.item())
 
                 # save original and reconstructed signal for plotting (highgamma for one sample for now)
                 if test_i == 0:
+
+                    if args.norm == "batch":
+                        recon_signal = normalize(recon_signal)
+                    else:
+                        recon_signal = recon_signal
 
                     new_model_recon = get_model_recon(signal, recon_signal, epoch)
                     model_recon = pd.concat([model_recon, new_model_recon])
@@ -402,7 +346,7 @@ def train_model(
             print("Epoch " + str(epoch) + " done. Time elapsed: " + str(end - start))
 
             logs = {
-                "train/loss": np.mean(recon_losses[-(train_i + 1) :]),
+                "train/loss": np.mean(train_losses[-(train_i + 1) :]),
                 "test/loss": np.mean(test_losses[-(test_i + 1) :]),
             }
             progress_bar.set_postfix(**logs)
@@ -411,8 +355,12 @@ def train_model(
         checkpoint = {
             "epoch": epoch,
             "model": model,
-            "optimizer": optimizer,
-            "lr_scheduler": lr_scheduler,
+            "optimizer": optimizer.state_dict(),
+            "lr_scheduler": lr_scheduler.state_dict(),
+            "train_losses": train_losses,
+            "seen_train_losses": seen_train_losses,
+            "test_losses": test_losses,
+            "seen_test_losses": seen_test_losses,
         }
 
         dir = os.getcwd() + f"/checkpoints/"
@@ -436,27 +384,47 @@ def train_model(
             index=False,
         )
 
-        # seen_corr.to_csv(
-        #     dir + f"{args.job_name}_seen_corr.csv",
-        #     index=False,
-        # )
+        seen_corr.to_csv(
+            dir + f"{args.job_name}_seen_corr.csv",
+            index=False,
+        )
 
-        # unseen_corr.to_csv(
-        #     dir + f"{args.job_name}_unseen_corr.csv",
-        #     index=False,
-        # )
+        unseen_corr.to_csv(
+            dir + f"{args.job_name}_unseen_corr.csv",
+            index=False,
+        )
+
+        # save train and test sample information
+        train_samples = pd.DataFrame(trains)
+        test_samples = pd.DataFrame(tests)
+
+        dir = os.getcwd() + f"/results/test_loader/"
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+        train_samples.to_csv(
+            dir + f"{args.job_name}_train_samples.csv",
+            index=False,
+        )
+
+        test_samples.to_csv(
+            dir + f"{args.job_name}_test_samples.csv",
+            index=False,
+        )
 
         # plot results
-        plot_losses(args, recon_losses, test_losses)
+        plot_losses(
+            args, train_losses, seen_train_losses, test_losses, seen_test_losses
+        )
         if use_contrastive_loss:
             plot_contrastive_loss(args, contrastive_losses)
 
         plot_signal_stats(args, signal_means, signal_stds)
 
-        plot_correlation(args, test_corr, "correlation")
-        plot_correlation(args, train_corr, "correlation")
-        # plot_correlation(args, seen_corr, "seen_correlation")
-        # plot_correlation(args, unseen_corr, "unseen_correlation")
+        plot_correlation(args, train_corr, "train_correlation")
+        plot_correlation(args, test_corr, "test_correlation")
+        plot_correlation(args, seen_corr, "seen_correlation")
+        plot_correlation(args, unseen_corr, "unseen_correlation")
         plot_recon_signals(args, model_recon)
 
     return model

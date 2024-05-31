@@ -1,7 +1,9 @@
 # TODO implement precise error messages
 
+import pandas as pd
 import time as t
 import torch
+import os
 
 
 def test_loader(args, train_dl, test_dl):
@@ -17,40 +19,59 @@ def test_loader(args, train_dl, test_dl):
     """
 
     # Test dataloader
-    if args.debug:
 
-        start = t.time()
+    start = t.time()
 
-        train_samples = 0
-        print("test train_dl")
-        for train_i, signal in enumerate(train_dl):
+    trains = []
 
-            if train_i == 1:
-                break
+    print("test train_dl")
+    for train_i, signal in enumerate(train_dl):
 
-            print("train batch " + str(train_i))
-            print("signal " + str(signal.shape))
-            train_samples += len(signal)
-
-        end = t.time()
-
-        print(
-            "Dataloader tested with batch size "
-            + str(args.batch_size)
-            + ". Time elapsed: "
-            + str(end - start)
+        trains.append(
+            {
+                "train batch ": str(train_i),
+                "num_samples": str(signal.shape),
+            }
         )
 
-        test_samples = 0
-        print("\ntest test_dl")
-        for test_i, signal in enumerate(test_dl):
+    end = t.time()
 
-            if test_i == 1:
-                break
+    train_samples = pd.DataFrame(trains)
 
-            test_samples += len(signal)
-            print("test batch " + str(test_i))
-            print("signal " + str(signal.shape))
+    print(
+        "Dataloader tested with batch size "
+        + str(args.batch_size)
+        + ". Time elapsed: "
+        + str(end - start)
+    )
+
+    tests = []
+
+    print("\ntest test_dl")
+    for test_i, signal in enumerate(test_dl):
+
+        tests.append(
+            {
+                "train batch ": str(test_i),
+                "num_samples": str(signal.shape),
+            }
+        )
+
+    test_samples = pd.DataFrame(tests)
+
+    dir = os.getcwd() + f"/results/test_loader/"
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    train_samples.to_csv(
+        dir + f"{args.job_name}_train_samples.csv",
+        index=False,
+    )
+
+    test_samples.to_csv(
+        dir + f"{args.job_name}_test_samples.csv",
+        index=False,
+    )
 
 
 def test_model(args, device, model, num_patches):
