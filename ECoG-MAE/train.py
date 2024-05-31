@@ -118,7 +118,7 @@ def train_model(
                     signal = normalize(signal)
 
                 # mask indicating positions of channels that were rejected during preprocessing
-                padding_mask = get_padding_mask(args, signal, model, device)
+                padding_mask = get_padding_mask(signal, model, device)
 
                 # convert nans to 0
                 signal = torch.nan_to_num(signal)
@@ -240,7 +240,7 @@ def train_model(
                     signal = normalize(signal)
 
                 # mask indicating positions of channels that were rejected during preprocessing
-                padding_mask = get_padding_mask(args, signal, model, device)
+                padding_mask = get_padding_mask(signal, model, device)
 
                 # convert nans to 0
                 signal = torch.nan_to_num(signal)
@@ -332,7 +332,7 @@ def train_model(
                     else:
                         recon_signal = recon_signal
 
-                    new_model_recon = get_model_recon(signal, recon_signal, epoch)
+                    new_model_recon = get_model_recon(args, signal, recon_signal, epoch)
                     model_recon = pd.concat([model_recon, new_model_recon])
 
                     dir = os.getcwd() + f"/results/recon_signals/"

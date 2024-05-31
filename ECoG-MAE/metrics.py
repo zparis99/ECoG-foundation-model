@@ -10,6 +10,19 @@ from tqdm import tqdm
 
 
 def get_signal_stats(args, signal, signal_stats, epoch, dl_i):
+    """
+    Get mean and standard deviation of the raw signal that is streamed from the dataloader.
+
+    Args:
+        args
+        signal: original raw signal
+        signal_stats:
+        epoch: current epoch
+        dl_i: current dataloader iteration
+
+    Returns:
+        new_signal_stats: dataframe containing mean, standard deviation for each epoch and dataloader iteration
+    """
 
     res_list = []
     i = 1
@@ -29,6 +42,20 @@ def get_signal_stats(args, signal, signal_stats, epoch, dl_i):
 
 
 def get_correlation(args, signal, recon_signal, epoch, dl_i):
+    """
+    Get pearson correlation between original and reconstructed signal.
+
+    Args:
+        args
+        signal: original normalized signal
+        recon_signal: reconstructed signal
+        epoch: current epoch
+        dl_i: current dataloader iteration
+
+    Returns:
+        new_corr: dataframe containing correlation between normalized original and reconstructed signal
+        for each epoch and dataloader iteration
+    """
 
     signal = np.array(signal.detach().detach().cpu())
     recon_signal = np.array(recon_signal.detach().cpu())
@@ -71,6 +98,20 @@ def get_correlation(args, signal, recon_signal, epoch, dl_i):
 
 
 def get_correlation_across_elecs(args, signal, recon_signal, epoch, dl_i):
+    """
+    Get pearson correlation between original and reconstructed signal averaged across all electrodes.
+
+    Args:
+        args
+        signal: original normalized signal
+        recon_signal: reconstructed signal
+        epoch: current epoch
+        dl_i: current dataloader iteration
+
+    Returns:
+        new_corr: dataframe containing correlation between normalized original and reconstructed signal
+        averaged across all electrodes for each epoch and dataloader iteration
+    """
 
     signal = np.array(signal.detach().detach().cpu())
     recon_signal = np.array(recon_signal.detach().cpu())
@@ -119,7 +160,19 @@ def get_correlation_across_elecs(args, signal, recon_signal, epoch, dl_i):
     return new_test_corr
 
 
-def get_model_recon(signal, recon_signal, epoch):
+def get_model_recon(args, signal, recon_signal, epoch):
+    """
+    Get original and reconstructed sample signal.
+
+    Args:
+        args
+        signal: original normalized signal
+        recon_signal: reconstructed signal
+        epoch: current epoch
+
+    Returns:
+        new_model_recon: dataframe containing timnecourse of original and reconstructed sample signal for each epoch.
+    """
 
     signal = np.array(signal.detach().detach().cpu())
     recon_signal = np.array(recon_signal.detach().cpu())
@@ -135,8 +188,8 @@ def get_model_recon(signal, recon_signal, epoch):
             res["elec"] = i
             i += 1
 
-            x = signal[8, 4, :, 0, h, w].flatten()
-            y = recon_signal[8, 4, :, 0, h, w].flatten()
+            x = signal[0, (len(args.bands) - 1), :, 0, h, w].flatten()
+            y = recon_signal[0, (len(args.bands) - 1), :, 0, h, w].flatten()
 
             if np.isnan(x).any() or np.isnan(y).any():
                 continue
