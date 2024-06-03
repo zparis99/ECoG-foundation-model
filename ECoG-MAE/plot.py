@@ -37,23 +37,28 @@ def plot_signal_stats(args, signal_means, signal_stds):
     plt.savefig(dir + f"{args.job_name}_signal_stds.png")
 
 
-def plot_losses(args, recon_losses, test_losses):
+def plot_losses(args, train_losses, seen_train_losses, test_losses, seen_test_losses):
 
-    plt.figure(figsize=(8, 3))
-    plt.plot(recon_losses)
-    plt.title("Training re-construction losses")
+    fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+
+    axs[0, 0].plot(train_losses)
+    axs[0, 0].set_title("Training losses")
+
+    axs[0, 1].plot(seen_train_losses)
+    axs[0, 1].set_title("Seen training losses")
+
+    axs[1, 0].plot(test_losses)
+    axs[1, 0].set_title("Test losses")
+
+    axs[1, 1].plot(seen_test_losses)
+    axs[1, 1].set_title("Seen test losses")
+
+    plt.tight_layout()
+
     dir = os.getcwd() + f"/results/loss/"
     if not os.path.exists(dir):
         os.makedirs(dir)
-    plt.savefig(dir + f"{args.job_name}_training_loss.png")
-
-    plt.figure(figsize=(8, 3))
-    plt.plot(test_losses)
-    plt.title("Test losses")
-    dir = os.getcwd() + f"/results/loss/"
-    if not os.path.exists(dir):
-        os.makedirs(dir)
-    plt.savefig(dir + f"{args.job_name}_test_loss.png")
+    plt.savefig(dir + f"{args.job_name}_losses.png")
 
 
 def plot_contrastive_loss(args, contrastive_losses):
@@ -73,6 +78,7 @@ def plot_correlation(args, df, fn):
         os.makedirs(dir)
 
     groups = df.groupby(["elec", "band"])
+    # test to do df.dl_i instead #TODO
     df["x"] = groups.cumcount()
 
     # plotting

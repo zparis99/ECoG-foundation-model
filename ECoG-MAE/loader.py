@@ -116,18 +116,15 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         # try smoothing window averaging instead #TODO
 
-        out = {}
         # rearrange into shape c*t*d*h*w, where
         # c = freq bands,
         # t = number of datapoints within a sample
         # d = depth (currently 1)
         # h = height of grid (currently 8)
         # w = width of grid (currently 8)
-        out["signal"] = rearrange(
+        out = rearrange(
             np.array(resampled, dtype=np.float32), "c (h w) t -> c t () h w", h=8, w=8
         )
-
-        out["chn_mask"] = rearrange(chn_mask, "(h w) -> h w", h=8, w=8)
 
         end = t.time()
 
@@ -136,7 +133,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         return out
 
 
-def split_dataframe(df, ratio):
+def split_dataframe(args, df, ratio):
     """
     Shuffles a pandas dataframe and splits it into two dataframes with the specified ratio
 
@@ -149,8 +146,9 @@ def split_dataframe(df, ratio):
         df2: test split dataframe containing a proportion of 1-ratio of the full dataframe
     """
 
-    # Shuffle the dataframe
-    df = df.sample(frac=1).reset_index(drop=True)
+    # # Shuffle the dataframe
+    if args.shuffle:
+        df = df.sample(frac=1).reset_index(drop=True)
 
     # Calculate the split index based on the ratios
     split_index = int(ratio * len(df))
@@ -190,6 +188,7 @@ def dl_setup(args):
         train_dl: dataloader instance for train split
         test_dl: dataloader instance for test split
     """
+
     dataset_path = os.path.join(os.getcwd(), args.dataset_path)
     root = os.path.join(dataset_path , "derivatives/preprocessed")
     data = pd.read_csv(os.path.join(dataset_path, "dataset.csv"))
@@ -209,6 +208,8 @@ def dl_setup(args):
 
     num_train_samples = 0
 
+    trains = []
+
     for i, row in train_data.iterrows():
         path = BIDSPath(
             root=root,
@@ -221,6 +222,14 @@ def dl_setup(args):
         )
 
         train_path = str(path.fpath)
+        trains.append(
+            {
+                "name": train_path,
+                "num_samples": int(
+                    highlevel.read_edf_header(edf_file=train_path)["Duration"] / 2
+                ),
+            }
+        )
 
         num_train_samples = num_train_samples + int(
             highlevel.read_edf_header(edf_file=train_path)["Duration"] / 2
@@ -233,8 +242,12 @@ def dl_setup(args):
         train_dataset_combined, batch_size=batch_size
     )
 
+    train_samples = pd.DataFrame(trains)
+
     # load and concatenate data for test split
     test_datasets = []
+
+    tests = []
 
     for i, row in test_data.iterrows():
         path = BIDSPath(
@@ -249,9 +262,34 @@ def dl_setup(args):
 
         test_path = str(path.fpath)
 
+        tests.append(
+            {
+                "name": test_path,
+                "num_samples": int(
+                    highlevel.read_edf_header(edf_file=test_path)["Duration"] / 2
+                ),
+            }
+        )
+
         test_datasets.append(ECoGDataset(args, root, test_path, bands, fs, new_fs))
 
     test_dataset_combined = torch.utils.data.ChainDataset(test_datasets)
     test_dl = torch.utils.data.DataLoader(test_dataset_combined, batch_size=batch_size)
+
+    test_samples = pd.DataFrame(tests)
+
+    dir = os.getcwd() + f"/results/samples/"
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    train_samples.to_csv(
+        dir + f"{args.job_name}_train_samples.csv",
+        index=False,
+    )
+
+    test_samples.to_csv(
+        dir + f"{args.job_name}_test_samples.csv",
+        index=False,
+    )
 
     return train_dl, test_dl, num_train_samples
