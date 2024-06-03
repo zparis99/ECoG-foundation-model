@@ -189,18 +189,14 @@ def dl_setup(args):
         test_dl: dataloader instance for test split
     """
 
-    if args.sandbox:
-        root = f"{os.getcwd()}/dataset/derivatives/preprocessed"
-        data = pd.read_csv(f"{os.getcwd()}/dataset/dataset.csv")
-        train_data, test_data = split_dataframe(args, data, 0.5)
-    else:
-        root = f"{os.getcwd()}/dataset_full/derivatives/preprocessed"
-        data = pd.read_csv(f"{os.getcwd()}/dataset_full/dataset.csv")
+    dataset_path = os.path.join(os.getcwd(), args.dataset_path)
+    root = os.path.join(dataset_path , "derivatives/preprocessed")
+    data = pd.read_csv(os.path.join(dataset_path, "dataset.csv"))
 
-        # only look at subset of data
-        data = data.iloc[: int(len(data) * args.data_size), :]
-        # data = data.iloc[int(len(data) * (1 - args.data_size)) :, :]
-        train_data, test_data = split_dataframe(args, data, 0.9)
+    # only look at subset of data
+    data = data.iloc[: int(len(data) * args.data_size), :]
+    # data = data.iloc[int(len(data) * (1 - args.data_size)) :, :]
+    train_data, test_data = split_dataframe(data, args.train_data_proportion)
 
     bands = args.bands
     fs = 512

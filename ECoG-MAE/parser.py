@@ -13,7 +13,6 @@ def arg_parser():
     parser.add_argument("--shuffle", dest="shuffle", action="store_true")
     parser.set_defaults(shuffle=False)
     parser.add_argument("--sandbox", dest="sandbox", action="store_true")
-    parser.set_defaults(sandbox=False)
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--env", dest="env", action="store_true")
     parser.set_defaults(env=False)
@@ -41,6 +40,18 @@ def arg_parser():
     parser.set_defaults(use_contrastive_loss=False)
     parser.add_argument("--dim", type=int, default=0)
     parser.add_argument("--mlp-dim", type=int, default=0)
+    parser.add_argument(
+        "--dataset-path",
+        type=str,
+        default="dataset_full",
+        description="Relative path to the root of the dataset folder.",
+    )
+    parser.add_argument(
+        "--train-data-proportion",
+        type=float,
+        default=0.9,
+        description="Percentage of data to assign to train split. All remaining data is assigned to test split.",
+    )
     args = parser.parse_args()
 
     # parse string input to list of lists

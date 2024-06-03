@@ -40,7 +40,8 @@ CMD = python
 # for commands debug, use-contrastive-loss, use-cls-token: add to arguments = True, leave out = False
 # --debug -> just enables verbose print out for debugging
 # --env -> compute power envelope
-# --sandbox -> use sandbox data
+# --dataset-path="dataset" -> Sets where training looks for the dataset. Should be a relative path.
+# --train-data-proportion=0.8 -> Sets proportion of data assigned to train split. All remaining data is assigned to test.
 # --use-cls-token (not implemented yet!)
 # --use-contrastive-loss (not implemented yet!)
 # --running-cell-masking -> specific type of decoder masking (not properly tested yet!)

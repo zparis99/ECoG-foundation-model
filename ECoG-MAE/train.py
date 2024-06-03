@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import multiprocessing as mp
 import time as t
 import os
 import torch
@@ -413,18 +414,29 @@ def train_model(
         )
 
         # plot results
-        plot_losses(
-            args, train_losses, seen_train_losses, test_losses, seen_test_losses
-        )
-        if use_contrastive_loss:
-            plot_contrastive_loss(args, contrastive_losses)
+        # Just closing plots isn't enough to free up the RAM used by matplotlib. Instead what we need to do to return that memory 
+        # is to plot in a subprocess which will be killed at completion. When that process is killed
+        # we actually get the memory back.
+        # See https://stackoverflow.com/questions/28516828/memory-leaks-using-matplotlib?rq=4 for more details.
+        def _plot_summary(args, recon_losses, test_losses, use_contrastive_loss, contrastive_losses, signal_means, signal_stds, test_corr, train_corr, model_recon):
+            plot_losses(args, recon_losses, test_losses)
+            if use_contrastive_loss:
+                plot_contrastive_loss(args, contrastive_losses)
 
-        plot_signal_stats(args, signal_means, signal_stds)
+            plot_signal_stats(args, signal_means, signal_stds)
 
-        plot_correlation(args, train_corr, "train_correlation")
-        plot_correlation(args, test_corr, "test_correlation")
-        plot_correlation(args, seen_corr, "seen_correlation")
-        plot_correlation(args, unseen_corr, "unseen_correlation")
-        plot_recon_signals(args, model_recon)
+            plot_correlation(args, test_corr, "correlation")
+            plot_correlation(args, train_corr, "correlation")
+            # plot_correlation(args, seen_corr, "seen_correlation")
+            # plot_correlation(args, unseen_corr, "unseen_correlation")
+            plot_recon_signals(args, model_recon)
+            
+            plt.close('all')
+        
+        proc = mp.Process(target=_plot_summary, args=(args, recon_losses, test_losses, use_contrastive_loss, contrastive_losses, signal_means, signal_stds, test_corr, train_corr, model_recon))
+        proc.start()
+        # wait until proc terminates.
+        proc.join()
+
 
     return model
