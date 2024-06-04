@@ -42,13 +42,13 @@ def plot_losses(args, train_losses, seen_train_losses, test_losses, seen_test_lo
     fig, axs = plt.subplots(2, 2, figsize=(10, 8))
 
     axs[0, 0].plot(train_losses)
-    axs[0, 0].set_title("Training losses")
+    axs[0, 0].set_title("Recon training losses")
 
     axs[0, 1].plot(seen_train_losses)
     axs[0, 1].set_title("Seen training losses")
 
     axs[1, 0].plot(test_losses)
-    axs[1, 0].set_title("Test losses")
+    axs[1, 0].set_title("Recon test losses")
 
     axs[1, 1].plot(seen_test_losses)
     axs[1, 1].set_title("Seen test losses")

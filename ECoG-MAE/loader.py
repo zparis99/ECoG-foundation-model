@@ -190,13 +190,13 @@ def dl_setup(args):
     """
 
     dataset_path = os.path.join(os.getcwd(), args.dataset_path)
-    root = os.path.join(dataset_path , "derivatives/preprocessed")
+    root = os.path.join(dataset_path, "derivatives/preprocessed")
     data = pd.read_csv(os.path.join(dataset_path, "dataset.csv"))
 
     # only look at subset of data
     data = data.iloc[: int(len(data) * args.data_size), :]
     # data = data.iloc[int(len(data) * (1 - args.data_size)) :, :]
-    train_data, test_data = split_dataframe(data, args.train_data_proportion)
+    train_data, test_data = split_dataframe(args, data, args.train_data_proportion)
 
     bands = args.bands
     fs = 512
