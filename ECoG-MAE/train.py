@@ -117,6 +117,10 @@ def train_model(
 
                 if args.norm == "batch":
                     signal = normalize(signal)
+                else:
+                    signal = torch.where(
+                        signal == 0, torch.tensor(float("nan")), signal
+                    )
 
                 # mask indicating positions of channels that were rejected during preprocessing
                 padding_mask = get_padding_mask(signal, model, device)
@@ -438,10 +442,10 @@ def train_model(
 
             plot_signal_stats(args, signal_means, signal_stds)
 
-            plot_correlation(args, test_corr, "correlation")
-            plot_correlation(args, train_corr, "correlation")
-            # plot_correlation(args, seen_corr, "seen_correlation")
-            # plot_correlation(args, unseen_corr, "unseen_correlation")
+            plot_correlation(args, train_corr, "train_correlation")
+            plot_correlation(args, test_corr, "test_correlation")
+            plot_correlation(args, seen_corr, "seen_correlation")
+            plot_correlation(args, unseen_corr, "unseen_correlation")
             plot_recon_signals(args, model_recon)
 
             plt.close("all")

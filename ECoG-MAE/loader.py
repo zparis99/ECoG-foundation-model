@@ -6,6 +6,7 @@ import time as t
 import os
 import mne
 from mne_bids import BIDSPath
+import pyedflib
 from pyedflib import highlevel
 import scipy.signal
 from einops import rearrange
@@ -23,6 +24,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.new_fs = new_fs
         # since we take 2 sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by 2
         self.max_samples = highlevel.read_edf_header(edf_file=self.path)["Duration"] / 2
+        if args.norm == "hour":
+            self.means, self.stds = get_signal_stats(self.path)
         self.index = 0
 
     def __iter__(self):
@@ -41,7 +44,6 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         # here we define the grid - since for patient 798 grid electrodes are G1 - G64
         grid = np.linspace(1, 64, 64).astype(int)
 
-        # not all samples are 2 secs #TODO
         n_samples = int(2 * self.fs)
         n_new_samples = int(2 * self.new_fs)
 
@@ -53,17 +55,10 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             stop=(n_samples * (self.index + 1)),
         )
 
-        # normalize signal within each 2 sec chunk - #TODO implement in vectorized form
-        if self.args.norm == "sample":
-            for ch in range(0, len(sig)):
-                sig[ch] = sig[ch] - np.mean(sig[ch]) / np.std(sig[ch])
-
         # zero pad if chunk is shorter than 2 sec
         if len(sig[0]) < n_samples:
             padding = np.zeros((64, n_samples - len(sig[0])))
             sig = np.concatenate((sig, padding), axis=1)
-
-        chn_mask = torch.ones(64).to(torch.bool)
 
         # zero pad if channel is not included in grid #TODO a bit clunky right now, implement in a better and more flexible way
         # since we will load by index position of channel (so if a channel is not included it will load channel n+1 at position 1),
@@ -75,10 +70,24 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             if np.isin(chn, raw.info.ch_names) == False:
                 # if not we insert 0 padding and shift upwards
                 sig = np.insert(sig, i, np.zeros((1, n_samples)), axis=0)
-                chn_mask[i] = False
 
         # delete items that were shifted upwards
         sig = sig[:64, :]
+
+        # normalize signal within each 2 sec chunk - #TODO implement in vectorized form
+        if self.args.norm == "sample":
+            for ch in range(0, len(sig)):
+                if np.std(sig[ch]) == 0:
+                    continue
+                else:
+                    sig[ch] = sig[ch] - np.mean(sig[ch]) / np.std(sig[ch])
+        elif self.args.norm == "hour":
+            # TODO
+            for ch in range(0, len(sig)):
+                if np.std(sig[ch]) == 0:
+                    continue
+                else:
+                    sig[ch] = sig[ch] - self.means[ch] / self.stds[ch]
 
         # extract frequency bands
         nyq = 0.5 * self.fs
@@ -131,6 +140,26 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         # print('Time elapsed: ' + str(end-start))
 
         return out
+
+
+def get_signal_stats(path):
+
+    reader = pyedflib.EdfReader(path)
+
+    means = []
+    stds = []
+
+    for i in range(0, 64):
+
+        if i in [58, 59, 60]:
+            means.append(0)
+            stds.append(0)
+        else:
+            signal = reader.readSignal(i, 0)
+            means.append(np.mean(signal))
+            stds.append(np.std(signal))
+
+    return means, stds
 
 
 def split_dataframe(args, df, ratio):

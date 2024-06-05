@@ -18,6 +18,8 @@ def get_padding_mask(signal, model, device):
     padding_mask = ~torch.isnan(signal).to(device)
     padding_mask = rearrange(model.patchify(padding_mask), "b ... d -> b (...) d")
 
+    breakpoint()
+
     # TODO make flexible for handling ps > 1
     padding_mask = torch.all(padding_mask, dim=0)
     padding_mask = torch.all(padding_mask, dim=1)
