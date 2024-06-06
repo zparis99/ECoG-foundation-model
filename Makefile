@@ -11,7 +11,7 @@ download-data:
 		--access-token $(ACCESS_TOKEN)
 
 PREFIX = fixed-padding
-NORM = hour
+NORM = None
 DATA_SIZE = 0.25
 BATCH_SIZE = 64
 NEW_FS = 20
