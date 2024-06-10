@@ -86,9 +86,15 @@ def train_model(
 
     signal_means, signal_stds = [], []
     train_corr = pd.DataFrame()
+    seen_train_corr = pd.DataFrame()
+    unseen_train_corr = pd.DataFrame()
+    seen_train_avg_corr = pd.DataFrame()
+    unseen_train_avg_corr = pd.DataFrame()
     test_corr = pd.DataFrame()
-    seen_corr = pd.DataFrame()
-    unseen_corr = pd.DataFrame()
+    seen_test_corr = pd.DataFrame()
+    unseen_test_corr = pd.DataFrame()
+    seen_test_avg_corr = pd.DataFrame()
+    unseen_test_avg_corr = pd.DataFrame()
     model_recon = pd.DataFrame()
     trains = []
     tests = []
@@ -115,7 +121,7 @@ def train_model(
                 signal_means.append(torch.mean(signal).detach().to("cpu").item())
                 signal_stds.append(torch.std(signal).detach().to("cpu").item())
 
-                if args.norm == "batch":
+                if args.norm == "batch" or args.norm == "hour":
                     signal = normalize(signal)
                 else:
                     signal = torch.where(
@@ -162,15 +168,15 @@ def train_model(
 
                 # rearrange reconstructed and original patches (seen and not seen by encoder) into signal
                 (
-                    recon_signal,
+                    full_recon_signal,
                     recon_output,
                     recon_target,
                     seen_output,
                     seen_target,
                     seen_target_signal,
-                    seen_output_signal,
-                    recon_target_signal,
-                    recon_output_signal,
+                    seen_recon_signal,
+                    unseen_target_signal,
+                    unseen_recon_signal,
                 ) = rearrange_signals(
                     args,
                     model,
@@ -185,38 +191,58 @@ def train_model(
                 )
 
                 # get correlation between original and reconstructed signal
-                new_train_corr = get_correlation(
-                    args, signal, recon_signal, epoch, train_i
+                new_train_corr, new_seen_train_corr, new_unseen_train_corr = (
+                    get_correlation(
+                        args, signal, full_recon_signal, tube_mask, epoch, train_i
+                    )
                 )
                 train_corr = pd.concat([train_corr, new_train_corr])
 
-                # get correlation between original and reconstructed signal seen by the encoder
-                new_seen_corr = get_correlation_across_elecs(
-                    args, seen_target_signal, seen_output_signal, epoch, train_i
+                seen_train_corr = pd.concat([seen_train_corr, new_seen_train_corr])
+
+                unseen_train_corr = pd.concat(
+                    [unseen_train_corr, new_unseen_train_corr]
                 )
 
-                seen_corr = pd.concat([seen_corr, new_seen_corr])
-
-                # get correlation between original and reconstructed signal not seen by the encoder
-                new_unseen_corr = get_correlation_across_elecs(
-                    args, recon_target_signal, recon_output_signal, epoch, train_i
+                new_seen_train_avg_corr = get_correlation_across_elecs(
+                    args, seen_target_signal, seen_recon_signal, epoch, train_i
+                )
+                seen_train_avg_corr = pd.concat(
+                    [seen_train_avg_corr, new_seen_train_avg_corr]
                 )
 
-                unseen_corr = pd.concat([unseen_corr, new_unseen_corr])
+                new_unseen_train_avg_corr = get_correlation_across_elecs(
+                    args, unseen_target_signal, unseen_recon_signal, epoch, train_i
+                )
+                unseen_train_avg_corr = pd.concat(
+                    [unseen_train_avg_corr, new_unseen_train_avg_corr]
+                )
 
                 # calculate loss
                 if args.loss == "patch":
                     loss = mse(recon_output, recon_target)
                     seen_loss = mse(seen_output, seen_target)
                 elif args.loss == "signal":
-                    loss = mse(recon_output_signal, recon_target_signal)
-                    seen_loss = mse(seen_output_signal, seen_target_signal)
+                    loss = mse(unseen_recon_signal, unseen_target_signal)
+                    seen_loss = mse(seen_recon_signal, seen_target_signal)
                 elif args.loss == "both":
                     loss = mse(recon_output, recon_target) + mse(
-                        recon_output_signal, recon_target_signal
+                        unseen_recon_signal, unseen_target_signal
                     )
                     seen_loss = mse(seen_output, seen_target) + mse(
-                        seen_output_signal, seen_target_signal
+                        seen_recon_signal, seen_target_signal
+                    )
+                elif args.loss == "full":
+                    loss = mse(full_recon_signal, signal)
+                    seen_loss = mse(seen_recon_signal, seen_target_signal)
+                elif args.loss == "highgamma":
+                    loss = loss = mse(
+                        unseen_recon_signal[:, 4, :, :],
+                        unseen_target_signal[:, 4, :, :],
+                    )
+                    seen_loss = mse(
+                        seen_recon_signal[:, 4, :, :],
+                        seen_target_signal[:, 4, :, :],
                     )
 
                 accelerator.backward(loss)
@@ -241,8 +267,12 @@ def train_model(
                 signal_means.append(torch.mean(signal).detach().to("cpu").item())
                 signal_stds.append(torch.std(signal).detach().to("cpu").item())
 
-                if args.norm == "batch":
+                if args.norm == "batch" or args.norm == "hour":
                     signal = normalize(signal)
+                else:
+                    signal = torch.where(
+                        signal == 0, torch.tensor(float("nan")), signal
+                    )
 
                 # mask indicating positions of channels that were rejected during preprocessing
                 padding_mask = get_padding_mask(signal, model, device)
@@ -284,15 +314,15 @@ def train_model(
 
                 # rearrange reconstructed and original patches (seen and not seen by encoder) into signal
                 (
-                    recon_signal,
+                    full_recon_signal,
                     recon_output,
                     recon_target,
                     seen_output,
                     seen_target,
                     seen_target_signal,
-                    seen_output_signal,
-                    recon_target_signal,
-                    recon_output_signal,
+                    seen_recon_signal,
+                    unseen_target_signal,
+                    unseen_recon_signal,
                 ) = rearrange_signals(
                     args,
                     model,
@@ -306,24 +336,57 @@ def train_model(
                     decoder_padding_mask,
                 )
 
-                new_test_corr = get_correlation(
-                    args, signal, recon_signal, epoch, test_i
+                # get correlation between original and reconstructed signal
+                new_test_corr, new_seen_test_corr, new_unseen_test_corr = (
+                    get_correlation(
+                        args, signal, full_recon_signal, tube_mask, epoch, test_i
+                    )
                 )
                 test_corr = pd.concat([test_corr, new_test_corr])
+
+                seen_test_corr = pd.concat([seen_test_corr, new_seen_test_corr])
+
+                unseen_test_corr = pd.concat([unseen_test_corr, new_unseen_test_corr])
+
+                new_seen_test_avg_corr = get_correlation_across_elecs(
+                    args, seen_target_signal, seen_recon_signal, epoch, test_i
+                )
+                seen_test_avg_corr = pd.concat(
+                    [seen_test_avg_corr, new_seen_test_avg_corr]
+                )
+
+                new_unseen_test_avg_corr = get_correlation_across_elecs(
+                    args, unseen_target_signal, unseen_recon_signal, epoch, test_i
+                )
+                unseen_test_avg_corr = pd.concat(
+                    [unseen_test_avg_corr, new_unseen_test_avg_corr]
+                )
 
                 # calculate loss
                 if args.loss == "patch":
                     loss = mse(recon_output, recon_target)
                     seen_loss = mse(seen_output, seen_target)
                 elif args.loss == "signal":
-                    loss = mse(recon_output_signal, recon_target_signal)
-                    seen_loss = mse(seen_output_signal, seen_target_signal)
+                    loss = mse(unseen_recon_signal, unseen_target_signal)
+                    seen_loss = mse(seen_recon_signal, seen_target_signal)
                 elif args.loss == "both":
                     loss = mse(recon_output, recon_target) + mse(
-                        recon_output_signal, recon_target_signal
+                        unseen_recon_signal, unseen_target_signal
                     )
                     seen_loss = mse(seen_output, seen_target) + mse(
-                        seen_output_signal, seen_target_signal
+                        seen_recon_signal, seen_target_signal
+                    )
+                elif args.loss == "full":
+                    loss = mse(full_recon_signal, signal)
+                    seen_loss = mse(seen_recon_signal, seen_target_signal)
+                elif args.loss == "highgamma":
+                    loss = loss = mse(
+                        unseen_recon_signal[:, 4, :, :],
+                        unseen_target_signal[:, 4, :, :],
+                    )
+                    seen_loss = mse(
+                        seen_recon_signal[:, 4, :, :],
+                        seen_target_signal[:, 4, :, :],
                     )
 
                 test_losses.append(loss.item())
@@ -332,19 +395,23 @@ def train_model(
                 # save original and reconstructed signal for plotting (highgamma for one sample for now)
                 if test_i == 0:
 
-                    if args.norm == "batch":
-                        recon_signal = normalize(recon_signal)
+                    if args.norm == "batch" or args.norm == "hour":
+                        full_recon_signal = normalize(full_recon_signal)
                     else:
-                        recon_signal = recon_signal
+                        full_recon_signal = full_recon_signal
 
-                    new_model_recon = get_model_recon(args, signal, recon_signal, epoch)
+                    new_model_recon = get_model_recon(
+                        args, signal, full_recon_signal, epoch
+                    )
                     model_recon = pd.concat([model_recon, new_model_recon])
 
-                    dir = os.getcwd() + f"/results/recon_signals/"
+                    dir = os.getcwd() + f"/results/full_recon_signals/"
                     if not os.path.exists(dir):
                         os.makedirs(dir)
 
-                    model_recon.to_pickle(dir + f"{args.job_name}_recon_signal.txt")
+                    model_recon.to_pickle(
+                        dir + f"{args.job_name}_full_recon_signal.txt"
+                    )
 
             end = t.time()
 
@@ -384,18 +451,48 @@ def train_model(
             index=False,
         )
 
+        seen_train_corr.to_csv(
+            dir + f"{args.job_name}_seen_train_corr.csv",
+            index=False,
+        )
+
+        unseen_train_corr.to_csv(
+            dir + f"{args.job_name}_unseen_train_corr.csv",
+            index=False,
+        )
+
+        seen_train_avg_corr.to_csv(
+            dir + f"{args.job_name}_seen_train_avg_corr.csv",
+            index=False,
+        )
+
+        unseen_train_avg_corr.to_csv(
+            dir + f"{args.job_name}_unseen_train_avg_corr.csv",
+            index=False,
+        )
+
         test_corr.to_csv(
             dir + f"{args.job_name}_test_corr.csv",
             index=False,
         )
 
-        seen_corr.to_csv(
-            dir + f"{args.job_name}_seen_corr.csv",
+        seen_test_corr.to_csv(
+            dir + f"{args.job_name}_seen_test_corr.csv",
             index=False,
         )
 
-        unseen_corr.to_csv(
-            dir + f"{args.job_name}_unseen_corr.csv",
+        unseen_test_corr.to_csv(
+            dir + f"{args.job_name}_unseen_test_corr.csv",
+            index=False,
+        )
+
+        seen_test_avg_corr.to_csv(
+            dir + f"{args.job_name}_seen_test_avg_corr.csv",
+            index=False,
+        )
+
+        unseen_test_avg_corr.to_csv(
+            dir + f"{args.job_name}_unseen_test_avg_corr.csv",
             index=False,
         )
 
@@ -430,8 +527,16 @@ def train_model(
             contrastive_losses,
             signal_means,
             signal_stds,
-            test_corr,
             train_corr,
+            seen_train_corr,
+            unseen_train_corr,
+            seen_train_avg_corr,
+            unseen_train_avg_corr,
+            test_corr,
+            seen_test_corr,
+            unseen_test_corr,
+            seen_test_avg_corr,
+            unseen_test_avg_corr,
             model_recon,
         ):
             plot_losses(
@@ -443,9 +548,17 @@ def train_model(
             plot_signal_stats(args, signal_means, signal_stds)
 
             plot_correlation(args, train_corr, "train_correlation")
+            plot_correlation(args, seen_train_corr, "seen_train_correlation")
+            plot_correlation(args, unseen_train_corr, "unseen_train_correlation")
+            plot_correlation(args, seen_train_avg_corr, "seen_train_avg_correlation")
+            plot_correlation(
+                args, unseen_train_avg_corr, "unseen_train_avg_correlation"
+            )
             plot_correlation(args, test_corr, "test_correlation")
-            plot_correlation(args, seen_corr, "seen_correlation")
-            plot_correlation(args, unseen_corr, "unseen_correlation")
+            plot_correlation(args, seen_test_corr, "seen_test_correlation")
+            plot_correlation(args, unseen_test_corr, "unseen_test_correlation")
+            plot_correlation(args, seen_test_avg_corr, "seen_test_avg_correlation")
+            plot_correlation(args, unseen_test_avg_corr, "unseen_test_avg_correlation")
             plot_recon_signals(args, model_recon)
 
             plt.close("all")
@@ -460,13 +573,23 @@ def train_model(
                 contrastive_losses,
                 signal_means,
                 signal_stds,
-                test_corr,
                 train_corr,
+                seen_train_corr,
+                unseen_train_corr,
+                seen_train_avg_corr,
+                unseen_train_avg_corr,
+                test_corr,
+                seen_test_corr,
+                unseen_test_corr,
+                seen_test_avg_corr,
+                unseen_test_avg_corr,
                 model_recon,
             ),
         )
         proc.start()
         # wait until proc terminates.
         proc.join()
+
+        print("Plotting " + str(epoch) + " done.")
 
     return model

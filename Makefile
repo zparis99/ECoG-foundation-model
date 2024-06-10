@@ -10,20 +10,20 @@ download-data:
 	$ python ECoG-MAE/download_data.py \
 		--access-token $(ACCESS_TOKEN)
 
-PREFIX = fixed-padding
-NORM = None
-DATA_SIZE = 0.25
+PREFIX = test-long-run
+NORM = hour
+DATA_SIZE = 1
 BATCH_SIZE = 64
 NEW_FS = 20
 SAMPLE_LENGTH = 2
 PATCH_DIMS = 1 1 1
 PATCH_SIZE = 1
 FRAME_PATCH_SIZE = 4
-TUBE_MASK_RATIO = 0.5
+TUBE_MASK_RATIO = 0.15
 DECODER_MASK_RATIO = 0
 BANDS = "[[4,8],[8,13],[13,30],[30,55],[70,200]]"
 BANDS_STR = all
-NUM_EPOCHS = 10
+NUM_EPOCHS = 25
 LOSS = patch
 LEARNING_RATE = 0
 # 0 -> using learning rate scheduler 

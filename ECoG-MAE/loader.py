@@ -23,7 +23,9 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.fs = fs
         self.new_fs = new_fs
         # since we take 2 sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by 2
-        self.max_samples = highlevel.read_edf_header(edf_file=self.path)["Duration"] / 2
+        self.max_samples = int(
+            highlevel.read_edf_header(edf_file=self.path)["Duration"] // 2
+        )
         if args.norm == "hour":
             self.means, self.stds = get_signal_stats(self.path)
         self.index = 0
@@ -84,7 +86,14 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         elif self.args.norm == "hour":
             # TODO
             for ch in range(0, len(sig)):
-                if np.std(sig[ch]) == 0:
+                if self.stds[ch] == 0:
+                    print(
+                        "\n!!! normalization issues in: "
+                        + str(self.path)
+                        + " "
+                        + str(self.index)
+                        + "\n"
+                    )
                     continue
                 else:
                     sig[ch] = sig[ch] - self.means[ch] / self.stds[ch]
