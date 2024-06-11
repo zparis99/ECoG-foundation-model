@@ -10,20 +10,20 @@ download-data:
 	$ python ECoG-MAE/download_data.py \
 		--access-token $(ACCESS_TOKEN)
 
-PREFIX = test-long-run
+PREFIX = test-fixed-tmr-eval
 NORM = hour
-DATA_SIZE = 1
+DATA_SIZE = 0.025
 BATCH_SIZE = 64
 NEW_FS = 20
 SAMPLE_LENGTH = 2
 PATCH_DIMS = 1 1 1
 PATCH_SIZE = 1
 FRAME_PATCH_SIZE = 4
-TUBE_MASK_RATIO = 0.15
+TUBE_MASK_RATIO = 0.75
 DECODER_MASK_RATIO = 0
 BANDS = "[[4,8],[8,13],[13,30],[30,55],[70,200]]"
 BANDS_STR = all
-NUM_EPOCHS = 25
+NUM_EPOCHS = 10
 LOSS = patch
 LEARNING_RATE = 0
 # 0 -> using learning rate scheduler 
@@ -35,9 +35,9 @@ DATASET_PATH = dataset_full
 TRAIN_DATA_PROPORTION = 0.9
 JOB_NAME = "$(USR)-$(DT)-$(PREFIX)-ds-$(DATA_SIZE)-bs-$(BATCH_SIZE)-norm-$(NORM)-fs-$(NEW_FS)-sl-$(SAMPLE_LENGTH)-ps-$(PATCH_SIZE)-fps-$(FRAME_PATCH_SIZE)-tmr-$(TUBE_MASK_RATIO)-dmr-$(DECODER_MASK_RATIO)-b-$(BANDS_STR)-ep-$(NUM_EPOCHS)-loss-$(LOSS)-lr-$(LEARNING_RATE)-dim-$(DIM)"
 
-CMD = sbatch --job-name=$(JOB_NAME) submit.sh
+# CMD = sbatch --job-name=$(JOB_NAME) submit.sh
 # to debug, request interactive gpu node via salloc and select this option:
-# CMD = python
+CMD = python
 
 # for commands debug, use-contrastive-loss, use-cls-token: add to arguments = True, leave out = False
 # --debug -> just enables verbose print out for debugging

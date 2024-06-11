@@ -86,7 +86,9 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         elif self.args.norm == "hour":
             # TODO
             for ch in range(0, len(sig)):
-                if self.stds[ch] == 0:
+                if np.std(sig[ch]) == 0:
+                    continue
+                elif self.stds[ch] == 0 and np.std(sig[ch]) != 0:
                     print(
                         "\n!!! normalization issues in: "
                         + str(self.path)

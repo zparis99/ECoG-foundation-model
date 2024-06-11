@@ -196,7 +196,7 @@ def get_model_recon(args, signal, recon_signal, epoch):
         epoch: current epoch
 
     Returns:
-        new_model_recon: dataframe containing timnecourse of original and reconstructed sample signal for each epoch.
+        new_model_recon: dataframe containing timecourse of original and reconstructed sample signal for each epoch.
     """
 
     signal = np.array(signal.detach().detach().cpu())

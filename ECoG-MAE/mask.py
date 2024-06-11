@@ -25,7 +25,7 @@ def get_padding_mask(signal, model, device):
     return padding_mask
 
 
-def get_tube_mask(args, num_patches, num_frames, padding_mask, device):
+def get_tube_mask(args, tube_mask_ratio, num_patches, num_frames, padding_mask, device):
     """
     Masking out a certain percentage of the original signal, the unmasked parts are fed into the encoder.
     When constructing the mask we are taking into account channels that are padded, such that only channels
@@ -61,9 +61,7 @@ def get_tube_mask(args, num_patches, num_frames, padding_mask, device):
     # now we are taking 1 - tube_mask_ratio percent of all (shuffled) channels that contain signal
     tube_idx = mask_idx_candidates[
         : int(
-            num_patches
-            // (num_frames // args.frame_patch_size)
-            * (1 - args.tube_mask_ratio)
+            num_patches // (num_frames // args.frame_patch_size) * (1 - tube_mask_ratio)
         )
     ]
     # and set them to True, meaning they will be unmasked

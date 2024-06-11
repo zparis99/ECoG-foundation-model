@@ -134,9 +134,12 @@ def train_model(
                 # convert nans to 0
                 signal = torch.nan_to_num(signal)
 
+                # tube mask ratio as given by args for model train
+                tube_mask_ratio = args.tube_mask_ratio
+
                 # masking out parts of the input to the encoder (same mask across frames)
                 tube_mask = get_tube_mask(
-                    args, num_patches, num_frames, padding_mask, device
+                    args, tube_mask_ratio, num_patches, num_frames, padding_mask, device
                 )
 
                 # selecting parts of the signal for the decoder to reconstruct
@@ -280,9 +283,12 @@ def train_model(
                 # convert nans to 0
                 signal = torch.nan_to_num(signal)
 
+                # fixed tube mask ratio for model eval
+                tube_mask_ratio = 0.5
+
                 # masking out parts of the input to the encoder (same mask across frames)
                 tube_mask = get_tube_mask(
-                    args, num_patches, num_frames, padding_mask, device
+                    args, tube_mask_ratio, num_patches, num_frames, padding_mask, device
                 )
 
                 # selecting parts of the signal for the decoder to reconstruct
