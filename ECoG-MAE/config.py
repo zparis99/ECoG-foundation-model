@@ -5,9 +5,126 @@ import math
 import torch
 import numpy as np
 from accelerate import Accelerator, DeepSpeedPlugin
+from dataclasses import dataclass, field
 
 import utils
 from models import *
+
+
+# Config classes here are very roughly following the format of Tensorflow Model Garden: https://www.tensorflow.org/guide/model_garden#training_framework
+# to try and make expanding to new models and tasks slightly easier by logically breaking up the parameters to training into distinct pieces and directly
+# documenting the fields which can be configured.
+@dataclass
+class ECoGDataConfig:
+    # If 'batch' then will normalize data within a batch.
+    norm: str = None
+    # Percentage of data to include in training/testing.
+    data_size: float = 1.0
+    # Batch size to train with.
+    batch_size: int = 32
+    # If true then convert data to power envelope by taking magnitude of Hilbert
+    # transform.
+    env: bool = False
+    # Frequency bands for filtering raw iEEG data.
+    bands: list[list[int]] = ([[4, 8], [8, 13], [13, 30], [30, 55], [70, 200]],)
+    # Frequency to resample data to.
+    new_fs: int = 20
+    # Relative path to the dataset root directory.
+    dataset_path: str = None
+    # Proportion of data to have in training set. The rest will go to test set.
+    train_data_proportion: float = 0.9
+    # Number of seconds of data to use for a training example.
+    sample_length: int = 2
+    # TODO: Figure out what this does.
+    shuffle: bool = False
+    # If True then uses a mock data loader.
+    test_loader: bool = False
+
+
+@dataclass
+class TrainerConfig:
+    # Learning rate for training. If 0 then uses Adam scheduler.
+    learning_rate: float = 0.0
+    # TODO: Add max learning rate
+    # Number of epochs to train over data.
+    num_epochs: int = 10
+
+
+@dataclass
+class ViTConfig:
+    # Dimensionality of token embeddings.
+    dim: int = 512
+    # Dimensionality of feedforward network after attention layer.
+    mlp_dim: int = 512
+    # TODO
+    patch_size: list[int] = None
+    # TODO
+    frame_patch_size: int = 0
+    # TODO
+    patch_dims: list[int] = field(default_factory=lambda: [1, 1, 1])
+    # Prepend classification token to input if True. Always True if
+    # use_contrastive_loss is True.
+    use_cls_token: bool = False
+
+
+@dataclass
+class VideoMAETaskConfig:
+    # Config for model.
+    vit_config: ViTConfig = field(default_factory=ViTConfig)
+    # Proportion of tubes to mask out. See VideoMAE paper for details.
+    tube_mask_ratio: float = 0.5
+    # Proportion of
+    decoder_mask_ratio: float = 0
+    # If true then use contrastive loss to train model. Currently not supported.
+    use_contrastive_loss: bool = False
+
+
+@dataclass
+class VideoMAEExperimentConfig:
+    video_mae_task_config: VideoMAETaskConfig = field(
+        default_factory=VideoMAETaskConfig
+    )
+    ecog_data_config: ECoGDataConfig = field(default_factory=ECoGDataConfig)
+    trainer_config: TrainerConfig = field(default_factory=TrainerConfig)
+    # Name of training job. Will be used to save metrics.
+    job_name: str = None
+
+
+def create_video_mae_experiment_config(args):
+    """Convert command line arguments to an experiment config for VideoMAE."""
+    return VideoMAEExperimentConfig(
+        video_mae_task_config=VideoMAETaskConfig(
+            vit_config=ViTConfig(
+                dim=args.dim,
+                mlp_dim=args.mlp_dim,
+                patch_size=args.patch_size,
+                patch_dims=args.patch_dims,
+                frame_patch_size=args.frame_patch_size,
+                use_cls_token=args.use_cls_token,
+            ),
+            tube_mask_ratio=args.tube_mask_ratio,
+            decoder_mask_ration=args.decoder_mask_ratio,
+            use_contrastive_loss=args.use_contrastive_loss,
+        ),
+        trainer_config=TrainerConfig(
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+            num_epochs=args.num_epochs,
+        ),
+        ecog_data_config=ECoGDataConfig(
+            norm=args.norm,
+            data_size=args.data_size,
+            env=args.env,
+            bands=args.bands,
+            new_fs=args.new_fs,
+            dataset_path=args.dataset_path,
+            train_data_proportion=args.train_data_proportion,
+            sample_length=args.sample_length,
+            shuffle=args.shuffle,
+            test_loader=args.test_loader,
+        ),
+        job_name=args.job_name,
+    )
 
 
 def system_setup():
@@ -53,7 +170,7 @@ def system_setup():
     return accelerator, device, data_type, local_rank
 
 
-def model_setup(args, device, num_train_samples):
+def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
     """
     Sets up model config
 
@@ -67,9 +184,10 @@ def model_setup(args, device, num_train_samples):
         lr_scheduler: https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html
         num_patches: the number of patches in which the input data is segmented
     """
+    model_config = config.video_mae_task_config.vit_config
 
     ### class token config ###
-    use_cls_token = args.use_cls_token
+    use_cls_token = model_config.use_cls_token
 
     ### Loss Config ###
     use_contrastive_loss = args.use_contrastive_loss
@@ -83,8 +201,8 @@ def model_setup(args, device, num_train_samples):
     num_frames = args.sample_length * args.new_fs
 
     img_size = (1, 8, 8)
-    patch_dims = tuple(args.patch_dims)
-    frame_patch_size = args.frame_patch_size
+    patch_dims = tuple(model_config.patch_dims)
+    frame_patch_size = model_config.frame_patch_size
     num_patches = int(  # Defining the number of patches
         (img_size[0] / patch_dims[0])
         * (img_size[1] / patch_dims[1])
@@ -99,7 +217,7 @@ def model_setup(args, device, num_train_samples):
     print("num_encoder_patches", num_encoder_patches)
     print("num_decoder_patches", num_decoder_patches)
 
-    if args.dim == 0:
+    if model_config.dim == 0:
         dim = (
             patch_dims[0]
             * patch_dims[1]
@@ -110,7 +228,7 @@ def model_setup(args, device, num_train_samples):
     else:
         dim = args.dim
 
-    if args.mlp_dim == 0:
+    if model_config.mlp_dim == 0:
         mlp_dim = (
             patch_dims[0]
             * patch_dims[1]
@@ -119,7 +237,7 @@ def model_setup(args, device, num_train_samples):
             * len(args.bands)
         )
     else:
-        mlp_dim = args.mlp_dim
+        mlp_dim = model_config.mlp_dim
 
     model = SimpleViT(
         image_size=img_size,  # depth, height, width
@@ -132,7 +250,7 @@ def model_setup(args, device, num_train_samples):
         mlp_dim=mlp_dim,
         channels=len(args.bands),
         use_rope_emb=False,
-        use_cls_token=args.use_cls_token,
+        use_cls_token=model_config.use_cls_token,
     )
     utils.count_params(model)
 
