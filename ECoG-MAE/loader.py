@@ -15,13 +15,14 @@ import torch
 
 class ECoGDataset(torch.utils.data.IterableDataset):
 
-    def __init__(self, args, root, path, bands, fs, new_fs):
+    def __init__(self, args, root, path, bands, fs, new_fs, sample_secs=2):
         self.args = args
         self.root = root
         self.path = path
         self.bands = bands
         self.fs = fs
         self.new_fs = new_fs
+        self.sample_secs = sample_secs
         # since we take 2 sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by 2
         self.max_samples = highlevel.read_edf_header(edf_file=self.path)["Duration"] / 2
         if args.norm == "hour":
@@ -44,8 +45,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         # here we define the grid - since for patient 798 grid electrodes are G1 - G64
         grid = np.linspace(1, 64, 64).astype(int)
 
-        n_samples = int(2 * self.fs)
-        n_new_samples = int(2 * self.new_fs)
+        n_samples = int(self.sample_secs * self.fs)
+        n_new_samples = int(self.sample_secs * self.new_fs)
 
         # load edf and extract signal
         raw = read_raw(self.path)
@@ -205,6 +206,51 @@ def read_raw(filename):
     return raw
 
 
+def get_dataset_path_info(root: str, data_split: pd.DataFrame) -> tuple[list[str], int, pd.Dataframe]:
+    """Generates information about the data referenced in data_split.
+
+    Args:
+        root (str): Filepath to root of BIDS dataset.
+        data_split (pd.DataFrame): Dataframe storing references to the files to be used in this data split. Should have columns subject, task, and chunk.
+
+    Returns: (List of filepaths to be used for data_split, Number of  samples for the data split, Dataframe with columns {'name': <filepath>, 'num_samples': <number of samples in file>})
+    """
+    split_filepaths = []
+
+    num_samples = 0
+
+    sample_desc = []
+
+    for i, row in data_split.iterrows():
+        path = BIDSPath(
+            root=root,
+            datatype="car",
+            subject=f"{row.subject:02d}",
+            task=f"part{row.task:03d}chunk{row.chunk:02d}",
+            suffix="desc-preproc_ieeg",
+            extension=".edf",
+            check=False,
+        )
+
+        data_path = str(path.fpath)
+        sample_desc.append(
+            {
+                "name": data_path,
+                "num_samples": int(
+                    highlevel.read_edf_header(edf_file=data_path)["Duration"] / 2
+                ),
+            }
+        )
+
+        num_samples = num_samples + int(
+            highlevel.read_edf_header(edf_file=data_path)["Duration"] / 2
+        )
+
+        split_filepaths.append(data_path)
+
+    return split_filepaths, num_samples, pd.DataFrame(sample_desc)
+
+
 def dl_setup(args):
     """
     Sets up dataloaders for train and test split. Here, we use a chain dataset implementation, meaning we concatenate 1 hour chunks of our data as iterable datasets into a larger
@@ -233,79 +279,18 @@ def dl_setup(args):
     batch_size = args.batch_size
 
     # load and concatenate data for train split
-    train_datasets = []
-
-    num_train_samples = 0
-
-    trains = []
-
-    for i, row in train_data.iterrows():
-        path = BIDSPath(
-            root=root,
-            datatype="car",
-            subject=f"{row.subject:02d}",
-            task=f"part{row.task:03d}chunk{row.chunk:02d}",
-            suffix="desc-preproc_ieeg",
-            extension=".edf",
-            check=False,
-        )
-
-        train_path = str(path.fpath)
-        trains.append(
-            {
-                "name": train_path,
-                "num_samples": int(
-                    highlevel.read_edf_header(edf_file=train_path)["Duration"] / 2
-                ),
-            }
-        )
-
-        num_train_samples = num_train_samples + int(
-            highlevel.read_edf_header(edf_file=train_path)["Duration"] / 2
-        )
-
-        train_datasets.append(ECoGDataset(args, root, train_path, bands, fs, new_fs))
-
+    train_filepaths, num_train_samples, train_samples = get_dataset_path_info(root, train_data)
+    train_datasets = [ECoGDataset(args, root, train_path, bands, fs, new_fs) for train_path in train_filepaths]
     train_dataset_combined = torch.utils.data.ChainDataset(train_datasets)
     train_dl = torch.utils.data.DataLoader(
         train_dataset_combined, batch_size=batch_size
     )
 
-    train_samples = pd.DataFrame(trains)
-
     # load and concatenate data for test split
-    test_datasets = []
-
-    tests = []
-
-    for i, row in test_data.iterrows():
-        path = BIDSPath(
-            root=root,
-            datatype="car",
-            subject=f"{row.subject:02d}",
-            task=f"part{row.task:03d}chunk{row.chunk:02d}",
-            suffix="desc-preproc_ieeg",
-            extension=".edf",
-            check=False,
-        )
-
-        test_path = str(path.fpath)
-
-        tests.append(
-            {
-                "name": test_path,
-                "num_samples": int(
-                    highlevel.read_edf_header(edf_file=test_path)["Duration"] / 2
-                ),
-            }
-        )
-
-        test_datasets.append(ECoGDataset(args, root, test_path, bands, fs, new_fs))
-
+    test_filepaths, _, test_samples = get_dataset_path_info(root, test_data)
+    test_datasets = [ECoGDataset(args, root, test_path, bands, fs, new_fs) for test_path in test_filepaths]
     test_dataset_combined = torch.utils.data.ChainDataset(test_datasets)
     test_dl = torch.utils.data.DataLoader(test_dataset_combined, batch_size=batch_size)
-
-    test_samples = pd.DataFrame(tests)
 
     dir = os.getcwd() + f"/results/samples/"
     if not os.path.exists(dir):
