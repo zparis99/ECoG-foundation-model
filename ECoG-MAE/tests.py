@@ -4,14 +4,15 @@ import pandas as pd
 import time as t
 import torch
 import os
+from config import VideoMAEExperimentConfig
 
 
-def test_loader(args, train_dl, test_dl):
+def test_loader(config: VideoMAEExperimentConfig, train_dl: torch.utils.data.DataLoader, test_dl: torch.utils.data.DataLoader):
     """
     Tests if dataloader works as intended
 
     Args:
-        args: input arguments
+        config: experiment config
         train_dl: dataloader object
         tets_dl dataloader object
 
@@ -40,7 +41,7 @@ def test_loader(args, train_dl, test_dl):
 
     print(
         "Dataloader tested with batch size "
-        + str(args.batch_size)
+        + str(config.ecog_data_config.batch_size)
         + ". Time elapsed: "
         + str(end - start)
     )
@@ -64,12 +65,12 @@ def test_loader(args, train_dl, test_dl):
         os.makedirs(dir)
 
     train_samples.to_csv(
-        dir + f"{args.job_name}_train_samples.csv",
+        dir + f"{config.job_name}_train_samples.csv",
         index=False,
     )
 
     test_samples.to_csv(
-        dir + f"{args.job_name}_test_samples.csv",
+        dir + f"{config.job_name}_test_samples.csv",
         index=False,
     )
 

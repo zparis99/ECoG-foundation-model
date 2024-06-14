@@ -73,10 +73,12 @@ class VideoMAETaskConfig:
     vit_config: ViTConfig = field(default_factory=ViTConfig)
     # Proportion of tubes to mask out. See VideoMAE paper for details.
     tube_mask_ratio: float = 0.5
-    # Proportion of
+    # The ratio of the number of masked tokens in the input sequence.
     decoder_mask_ratio: float = 0
     # If true then use contrastive loss to train model. Currently not supported.
     use_contrastive_loss: bool = False
+    # If true use running cell masking when masking tokens.
+    running_cell_masking: bool = False
 
 
 @dataclass
@@ -105,14 +107,15 @@ def create_video_mae_experiment_config(args):
             tube_mask_ratio=args.tube_mask_ratio,
             decoder_mask_ration=args.decoder_mask_ratio,
             use_contrastive_loss=args.use_contrastive_loss,
+            running_cell_masking=args.running_cell_masking
         ),
         trainer_config=TrainerConfig(
-            batch_size=args.batch_size,
             learning_rate=args.learning_rate,
             num_epochs=args.num_epochs,
         ),
         ecog_data_config=ECoGDataConfig(
             norm=args.norm,
+            batch_size=args.batch_size,
             data_size=args.data_size,
             env=args.env,
             bands=args.bands,
@@ -190,7 +193,7 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
     use_cls_token = model_config.use_cls_token
 
     ### Loss Config ###
-    use_contrastive_loss = args.use_contrastive_loss
+    use_contrastive_loss = config.video_mae_task_config.use_contrastive_loss
     constrastive_loss_weight = 1.0
     use_cls_token = (
         True if use_contrastive_loss else use_cls_token
@@ -198,7 +201,7 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
 
     input_size = [1, 8, 8]
     print("input_size", input_size)
-    num_frames = args.sample_length * args.new_fs
+    num_frames = config.ecog_data_config.sample_length * config.ecog_data_config.new_fs
 
     img_size = (1, 8, 8)
     patch_dims = tuple(model_config.patch_dims)
@@ -211,8 +214,8 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
         / frame_patch_size
     )
 
-    num_encoder_patches = int(num_patches * (1 - args.tube_mask_ratio))
-    num_decoder_patches = int(num_patches * (1 - args.decoder_mask_ratio))
+    num_encoder_patches = int(num_patches * (1 - config.video_mae_task_config.tube_mask_ratio))
+    num_decoder_patches = int(num_patches * (1 - config.video_mae_task_config.decoder_mask_ratio))
     print("num_patches", num_patches)
     print("num_encoder_patches", num_encoder_patches)
     print("num_decoder_patches", num_decoder_patches)
@@ -223,7 +226,7 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
             * patch_dims[1]
             * patch_dims[2]
             * frame_patch_size
-            * len(args.bands)
+            * len(config.ecog_data_config.bands)
         )
     else:
         dim = args.dim
@@ -234,7 +237,7 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
             * patch_dims[1]
             * patch_dims[2]
             * frame_patch_size
-            * len(args.bands)
+            * len(config.ecog_data_config.bands)
         )
     else:
         mlp_dim = model_config.mlp_dim
@@ -248,7 +251,7 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
         heads=12,
         dim=dim,
         mlp_dim=mlp_dim,
-        channels=len(args.bands),
+        channels=len(config.ecog_data_config.bands),
         use_rope_emb=False,
         use_cls_token=model_config.use_cls_token,
     )
@@ -276,16 +279,16 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
 
     max_lr = 3e-5  # 3e-5 seems to be working best? original videomae used 1.5e-4
 
-    if args.learning_rate == 0:
+    if config.trainer_config.learning_rate == 0:
         optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=max_lr)
     else:
-        optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=args.learning_rate)
+        optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=config.trainer_config.learning_rate)
 
     lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=max_lr,
-        epochs=args.num_epochs,
-        steps_per_epoch=math.ceil(num_train_samples / args.batch_size),
+        epochs=config.trainer_config.num_epochs,
+        steps_per_epoch=math.ceil(num_train_samples / config.ecog_data_config.batch_size),
     )
 
     print("\nDone with model preparations!")

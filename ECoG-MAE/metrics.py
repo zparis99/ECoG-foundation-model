@@ -41,12 +41,12 @@ def get_signal_stats(args, signal, signal_stats, epoch, dl_i):
     return new_signal_stats
 
 
-def get_correlation(args, signal, recon_signal, epoch, dl_i):
+def get_correlation(bands: list[list[int]], signal, recon_signal, epoch, dl_i):
     """
     Get pearson correlation between original and reconstructed signal.
 
     Args:
-        args
+        bands: the bands of frequencies which we're filtering over
         signal: original normalized signal
         recon_signal: reconstructed signal
         epoch: current epoch
@@ -63,7 +63,7 @@ def get_correlation(args, signal, recon_signal, epoch, dl_i):
     # calculate correlation
     res_list = []
     i = 1
-    bands = ["theta", "alpha", "beta", "gamma", "highgamma"]
+    band_names = ["theta", "alpha", "beta", "gamma", "highgamma"]
 
     for h in range(0, 8):
         for w in range(0, 8):
@@ -72,7 +72,7 @@ def get_correlation(args, signal, recon_signal, epoch, dl_i):
             res["dl_i"] = dl_i
             res["elec"] = i
             i += 1
-            for c in range(0, len(args.bands)):
+            for c in range(0, len(bands)):
                 # correlate across samples in batch
                 x = signal[:, c, :, :, h, w].flatten()
                 y = recon_signal[:, c, :, :, h, w].flatten()
@@ -88,7 +88,7 @@ def get_correlation(args, signal, recon_signal, epoch, dl_i):
                         )
                     )
 
-                res["band"] = bands[c]
+                res["band"] = band_names[c]
                 res["corr"] = r
                 res_list.append(res.copy())
 
@@ -97,12 +97,12 @@ def get_correlation(args, signal, recon_signal, epoch, dl_i):
     return new_corr
 
 
-def get_correlation_across_elecs(args, signal, recon_signal, epoch, dl_i):
+def get_correlation_across_elecs(bands, signal, recon_signal, epoch, dl_i):
     """
     Get pearson correlation between original and reconstructed signal averaged across all electrodes.
 
     Args:
-        args
+        bands: the bands of frequencies which we're filtering over
         signal: original normalized signal
         recon_signal: reconstructed signal
         epoch: current epoch
@@ -119,9 +119,9 @@ def get_correlation_across_elecs(args, signal, recon_signal, epoch, dl_i):
     # calculate correlation
     res_list = []
     i = 1
-    bands = ["theta", "alpha", "beta", "gamma", "highgamma"]
+    band_names = ["theta", "alpha", "beta", "gamma", "highgamma"]
 
-    for c in range(0, len(args.bands)):
+    for c in range(0, len(bands)):
 
         res = {}
         res["epoch"] = epoch
@@ -151,7 +151,7 @@ def get_correlation_across_elecs(args, signal, recon_signal, epoch, dl_i):
                 )
             corrs.append(r)
 
-        res["band"] = bands[c]
+        res["band"] = band_names[c]
         res["corr"] = np.mean(corrs)
         res_list.append(res.copy())
 
@@ -160,12 +160,12 @@ def get_correlation_across_elecs(args, signal, recon_signal, epoch, dl_i):
     return new_test_corr
 
 
-def get_model_recon(args, signal, recon_signal, epoch):
+def get_model_recon(bands, signal, recon_signal, epoch):
     """
     Get original and reconstructed sample signal.
 
     Args:
-        args
+        bands: frequency bands used for filtering
         signal: original normalized signal
         recon_signal: reconstructed signal
         epoch: current epoch
@@ -188,8 +188,8 @@ def get_model_recon(args, signal, recon_signal, epoch):
             res["elec"] = i
             i += 1
 
-            x = signal[0, (len(args.bands) - 1), :, 0, h, w].flatten()
-            y = recon_signal[0, (len(args.bands) - 1), :, 0, h, w].flatten()
+            x = signal[0, (len(bands) - 1), :, 0, h, w].flatten()
+            y = recon_signal[0, (len(bands) - 1), :, 0, h, w].flatten()
 
             if np.isnan(x).any() or np.isnan(y).any():
                 continue
