@@ -23,8 +23,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.fs = fs
         self.new_fs = config.new_fs
         self.sample_secs = config.sample_length
-        # since we take 2 sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by 2
-        self.max_samples = highlevel.read_edf_header(edf_file=self.path)["Duration"] / 2
+        # since we take sample_length sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by sample_length
+        self.max_samples = highlevel.read_edf_header(edf_file=self.path)["Duration"] / config.sample_length
         if config.norm == "hour":
             self.means, self.stds = get_signal_stats(self.path)
         self.index = 0
@@ -208,11 +208,12 @@ def read_raw(filename):
 
 
 def get_dataset_path_info(
-    root: str, data_split: pd.DataFrame
+    sample_length: int, root: str, data_split: pd.DataFrame
 ) -> tuple[list[str], int, pd.DataFrame]:
     """Generates information about the data referenced in data_split.
 
     Args:
+        sample_length (int): number of seconds for each sample
         root (str): Filepath to root of BIDS dataset.
         data_split (pd.DataFrame): Dataframe storing references to the files to be used in this data split. Should have columns subject, task, and chunk.
 
@@ -286,7 +287,7 @@ def dl_setup(
 
     # load and concatenate data for train split
     train_filepaths, num_train_samples, train_samples = get_dataset_path_info(
-        root, train_data
+        config.ecog_data_config.sample_length, root, train_data
     )
     train_datasets = [
         ECoGDataset(train_path, fs, config.ecog_data_config)
@@ -298,7 +299,7 @@ def dl_setup(
     )
 
     # load and concatenate data for test split
-    test_filepaths, _, test_samples = get_dataset_path_info(root, test_data)
+    test_filepaths, _, test_samples = get_dataset_path_info(config.ecog_data_config.sample_length, root, test_data)
     test_datasets = [
         ECoGDataset(test_path, fs, config.ecog_data_config)
         for test_path in test_filepaths
