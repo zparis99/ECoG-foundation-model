@@ -1,7 +1,8 @@
 import torch
 import sys
 from parser import arg_parser
-from config import system_setup, model_setup, create_video_mae_experiment_config
+from setup import system_setup, model_setup
+from config import create_video_mae_experiment_config
 from loader import dl_setup
 from models import *
 from tests import test_loader, test_model
