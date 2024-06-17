@@ -37,6 +37,8 @@ class TrainerConfig:
     # TODO: Add max learning rate
     # Number of epochs to train over data.
     num_epochs: int = 10
+    # Type of loss to use.
+    loss: str = 'patch'
 
 
 @dataclass
@@ -46,7 +48,7 @@ class ViTConfig:
     # Dimensionality of feedforward network after attention layer.
     mlp_dim: int = 512
     # TODO
-    patch_size: list[int] = None
+    patch_size: int = 0
     # TODO
     frame_patch_size: int = 0
     # TODO
@@ -94,13 +96,14 @@ def create_video_mae_experiment_config(args):
                 use_cls_token=args.use_cls_token,
             ),
             tube_mask_ratio=args.tube_mask_ratio,
-            decoder_mask_ration=args.decoder_mask_ratio,
+            decoder_mask_ratio=args.decoder_mask_ratio,
             use_contrastive_loss=args.use_contrastive_loss,
             running_cell_masking=args.running_cell_masking
         ),
         trainer_config=TrainerConfig(
             learning_rate=args.learning_rate,
             num_epochs=args.num_epochs,
+            loss=args.loss,
         ),
         ecog_data_config=ECoGDataConfig(
             norm=args.norm,

@@ -270,13 +270,13 @@ def dl_setup(
         test_dl: dataloader instance for test split
     """
 
-    dataset_path = os.path.join(os.getcwd(), config.dataset_path)
+    dataset_path = os.path.join(os.getcwd(), config.ecog_data_config.dataset_path)
     root = os.path.join(dataset_path, "derivatives/preprocessed")
     data = pd.read_csv(os.path.join(dataset_path, "dataset.csv"))
 
     # only look at subset of data
-    data = data.iloc[: int(len(data) * config.data_size), :]
-    # data = data.iloc[int(len(data) * (1 - config.data_size)) :, :]
+    data = data.iloc[: int(len(data) * config.ecog_data_config.data_size), :]
+    # data = data.iloc[int(len(data) * (1 - config.ecog_data_config.data_size)) :, :]
     train_data, test_data = split_dataframe(
         config.ecog_data_config.shuffle,
         data,
