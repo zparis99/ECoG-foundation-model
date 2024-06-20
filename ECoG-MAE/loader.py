@@ -11,22 +11,22 @@ from pyedflib import highlevel
 import scipy.signal
 from einops import rearrange
 import torch
+from config import ECoGDataConfig, VideoMAEExperimentConfig
 
 
 class ECoGDataset(torch.utils.data.IterableDataset):
 
-    def __init__(self, args, root, path, bands, fs, new_fs):
-        self.args = args
-        self.root = root
+    def __init__(self, path: str, fs: int, config: ECoGDataConfig):
+        self.config = config
         self.path = path
-        self.bands = bands
+        self.bands = config.bands
         self.fs = fs
-        self.new_fs = new_fs
-        # since we take 2 sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by 2
-        self.max_samples = int(
-            highlevel.read_edf_header(edf_file=self.path)["Duration"] // 2
-        )
-        self.means, self.stds = get_signal_stats(self.path)
+        self.new_fs = config.new_fs
+        self.sample_secs = config.sample_length
+        # since we take sample_length sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by sample_length
+        self.max_samples = highlevel.read_edf_header(edf_file=self.path)["Duration"] / config.sample_length
+        if config.norm == "hour":
+            self.means, self.stds = get_signal_stats(self.path)
         self.index = 0
 
     def __iter__(self):
@@ -38,15 +38,15 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         if self.index == self.max_samples:
             self.index = 0
 
-    def sample_data(self):
+    def sample_data(self) -> np.array:
 
         start = t.time()
 
         # here we define the grid - since for patient 798 grid electrodes are G1 - G64
         grid = np.linspace(1, 64, 64).astype(int)
 
-        n_samples = int(2 * self.fs)
-        n_new_samples = int(2 * self.new_fs)
+        n_samples = int(self.sample_secs * self.fs)
+        n_new_samples = int(self.sample_secs * self.new_fs)
 
         # load edf and extract signal
         raw = read_raw(self.path)
@@ -148,11 +148,12 @@ def get_signal_stats(path):
     return means, stds
 
 
-def split_dataframe(args, df, ratio):
+def split_dataframe(shuffle: bool, df: pd.DataFrame, ratio: float):
     """
     Shuffles a pandas dataframe and splits it into two dataframes with the specified ratio
 
     Args:
+        shuffle: If true then shuffle the dataframe before splitting.
         df: The dataframe to split
         ratio: The proportion of data for the first dataframe (default: 0.9)
 
@@ -162,7 +163,7 @@ def split_dataframe(args, df, ratio):
     """
 
     # # Shuffle the dataframe
-    if args.shuffle:
+    if shuffle:
         df = df.sample(frac=1).reset_index(drop=True)
 
     # Calculate the split index based on the ratios
@@ -191,119 +192,119 @@ def read_raw(filename):
     return raw
 
 
-def dl_setup(args):
+def get_dataset_path_info(
+    sample_length: int, root: str, data_split: pd.DataFrame
+) -> tuple[list[str], int, pd.DataFrame]:
+    """Generates information about the data referenced in data_split.
+
+    Args:
+        sample_length (int): number of seconds for each sample
+        root (str): Filepath to root of BIDS dataset.
+        data_split (pd.DataFrame): Dataframe storing references to the files to be used in this data split. Should have columns subject, task, and chunk.
+
+    Returns: (List of filepaths to be used for data_split, Number of  samples for the data split, Dataframe with columns {'name': <filepath>, 'num_samples': <number of samples in file>})
+    """
+    split_filepaths = []
+
+    num_samples = 0
+
+    sample_desc = []
+
+    for i, row in data_split.iterrows():
+        path = BIDSPath(
+            root=root,
+            datatype="car",
+            subject=f"{row.subject:02d}",
+            task=f"part{row.task:03d}chunk{row.chunk:02d}",
+            suffix="desc-preproc_ieeg",
+            extension=".edf",
+            check=False,
+        )
+
+        data_path = str(path.fpath)
+        sample_desc.append(
+            {
+                "name": data_path,
+                "num_samples": int(
+                    highlevel.read_edf_header(edf_file=data_path)["Duration"] / 2
+                ),
+            }
+        )
+
+        num_samples = num_samples + int(
+            highlevel.read_edf_header(edf_file=data_path)["Duration"] / 2
+        )
+
+        split_filepaths.append(data_path)
+
+    return split_filepaths, num_samples, pd.DataFrame(sample_desc)
+
+
+def dl_setup(
+    config: VideoMAEExperimentConfig,
+) -> tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader, int]:
     """
     Sets up dataloaders for train and test split. Here, we use a chain dataset implementation, meaning we concatenate 1 hour chunks of our data as iterable datasets into a larger
     dataset from which we can stream - https://discuss.pytorch.org/t/using-chaindataset-to-combine-iterabledataset/85236
 
     Args:
-        args: command line arguments
+        config: command line arguments
 
     Returns:
         train_dl: dataloader instance for train split
         test_dl: dataloader instance for test split
     """
 
-    dataset_path = os.path.join(os.getcwd(), args.dataset_path)
+    dataset_path = os.path.join(os.getcwd(), config.ecog_data_config.dataset_path)
     root = os.path.join(dataset_path, "derivatives/preprocessed")
     data = pd.read_csv(os.path.join(dataset_path, "dataset.csv"))
 
     # only look at subset of data
-    data = data.iloc[: int(len(data) * args.data_size), :]
-    # data = data.iloc[int(len(data) * (1 - args.data_size)) :, :]
-    train_data, test_data = split_dataframe(args, data, args.train_data_proportion)
-
-    bands = args.bands
-    fs = 512
-    new_fs = args.new_fs
-    batch_size = args.batch_size
-
-    # load and concatenate data for train split
-    train_datasets = []
-
-    num_train_samples = 0
-
-    trains = []
-
-    for i, row in train_data.iterrows():
-        path = BIDSPath(
-            root=root,
-            datatype="car",
-            subject=f"{row.subject:02d}",
-            task=f"part{row.task:03d}chunk{row.chunk:02d}",
-            suffix="desc-preproc_ieeg",
-            extension=".edf",
-            check=False,
-        )
-
-        train_path = str(path.fpath)
-        trains.append(
-            {
-                "name": train_path,
-                "num_samples": int(
-                    highlevel.read_edf_header(edf_file=train_path)["Duration"] / 2
-                ),
-            }
-        )
-
-        num_train_samples = num_train_samples + int(
-            highlevel.read_edf_header(edf_file=train_path)["Duration"] / 2
-        )
-
-        train_datasets.append(ECoGDataset(args, root, train_path, bands, fs, new_fs))
-
-    train_dataset_combined = torch.utils.data.ChainDataset(train_datasets)
-    train_dl = torch.utils.data.DataLoader(
-        train_dataset_combined, batch_size=batch_size
+    data = data.iloc[: int(len(data) * config.ecog_data_config.data_size), :]
+    # data = data.iloc[int(len(data) * (1 - config.ecog_data_config.data_size)) :, :]
+    train_data, test_data = split_dataframe(
+        config.ecog_data_config.shuffle,
+        data,
+        config.ecog_data_config.train_data_proportion,
     )
 
-    train_samples = pd.DataFrame(trains)
+    fs = 512
+
+    # load and concatenate data for train split
+    train_filepaths, num_train_samples, train_samples = get_dataset_path_info(
+        config.ecog_data_config.sample_length, root, train_data
+    )
+    train_datasets = [
+        ECoGDataset(train_path, fs, config.ecog_data_config)
+        for train_path in train_filepaths
+    ]
+    train_dataset_combined = torch.utils.data.ChainDataset(train_datasets)
+    train_dl = torch.utils.data.DataLoader(
+        train_dataset_combined, batch_size=config.ecog_data_config.batch_size
+    )
 
     # load and concatenate data for test split
-    test_datasets = []
-
-    tests = []
-
-    for i, row in test_data.iterrows():
-        path = BIDSPath(
-            root=root,
-            datatype="car",
-            subject=f"{row.subject:02d}",
-            task=f"part{row.task:03d}chunk{row.chunk:02d}",
-            suffix="desc-preproc_ieeg",
-            extension=".edf",
-            check=False,
-        )
-
-        test_path = str(path.fpath)
-
-        tests.append(
-            {
-                "name": test_path,
-                "num_samples": int(
-                    highlevel.read_edf_header(edf_file=test_path)["Duration"] / 2
-                ),
-            }
-        )
-
-        test_datasets.append(ECoGDataset(args, root, test_path, bands, fs, new_fs))
-
+    test_filepaths, _, test_samples = get_dataset_path_info(config.ecog_data_config.sample_length, root, test_data)
+    test_datasets = [
+        ECoGDataset(test_path, fs, config.ecog_data_config)
+        for test_path in test_filepaths
+    ]
     test_dataset_combined = torch.utils.data.ChainDataset(test_datasets)
-    test_dl = torch.utils.data.DataLoader(test_dataset_combined, batch_size=batch_size)
-
-    test_samples = pd.DataFrame(tests)
+    test_dl = torch.utils.data.DataLoader(
+        test_dataset_combined, batch_size=config.ecog_data_config.batch_size
+    )
 
     dir = os.getcwd() + f"/results/samples/"
     if not os.path.exists(dir):
         os.makedirs(dir)
 
     train_samples.to_csv(
-        dir + f"{args.job_name}_train_samples.csv",
+        dir + f"{config.job_name}_train_samples.csv",
         index=False,
     )
 
     test_samples.to_csv(
-        dir + f"{args.job_name}_test_samples.csv",
+        dir + f"{config.job_name}_test_samples.csv",
         index=False,
     )
 

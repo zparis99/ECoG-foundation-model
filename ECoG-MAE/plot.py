@@ -7,7 +7,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.gridspec import GridSpec
 
 
-def plot_signal(args, signal, id):
+def plot_signal(job_name, signal, id):
 
     plt.figure(figsize=(8, 3))
     plt.plot(signal)
@@ -15,10 +15,10 @@ def plot_signal(args, signal, id):
     dir = os.getcwd() + f"/results/signals/"
     if not os.path.exists(dir):
         os.makedirs(dir)
-    plt.savefig(dir + f"{args.job_name}_{id}_signal.png")
+    plt.savefig(dir + f"{job_name}_{id}_signal.png")
 
 
-def plot_signal_stats(args, signal_means, signal_stds):
+def plot_signal_stats(job_name, signal_means, signal_stds):
 
     plt.figure(figsize=(8, 3))
     plt.plot(signal_means)
@@ -26,7 +26,7 @@ def plot_signal_stats(args, signal_means, signal_stds):
     dir = os.getcwd() + f"/results/signals/"
     if not os.path.exists(dir):
         os.makedirs(dir)
-    plt.savefig(dir + f"{args.job_name}_signal_means.png")
+    plt.savefig(dir + f"{job_name}_signal_means.png")
 
     plt.figure(figsize=(8, 3))
     plt.plot(signal_stds)
@@ -34,10 +34,10 @@ def plot_signal_stats(args, signal_means, signal_stds):
     dir = os.getcwd() + f"/results/signals/"
     if not os.path.exists(dir):
         os.makedirs(dir)
-    plt.savefig(dir + f"{args.job_name}_signal_stds.png")
+    plt.savefig(dir + f"{job_name}_signal_stds.png")
 
 
-def plot_losses(args, train_losses, seen_train_losses, test_losses, seen_test_losses):
+def plot_losses(job_name, train_losses, seen_train_losses, test_losses, seen_test_losses):
 
     fig, axs = plt.subplots(2, 2, figsize=(10, 8))
 
@@ -58,20 +58,20 @@ def plot_losses(args, train_losses, seen_train_losses, test_losses, seen_test_lo
     dir = os.getcwd() + f"/results/loss/"
     if not os.path.exists(dir):
         os.makedirs(dir)
-    plt.savefig(dir + f"{args.job_name}_losses.png")
+    plt.savefig(dir + f"{job_name}_losses.png")
 
 
-def plot_contrastive_loss(args, contrastive_losses):
+def plot_contrastive_loss(job_name, contrastive_losses):
     plt.figure(figsize=(8, 3))
     plt.plot(contrastive_losses)
     plt.title("Training contrastive losses")
     dir = os.getcwd() + f"/results/loss/"
     if not os.path.exists(dir):
         os.makedirs(dir)
-    plt.savefig(dir + f"{args.job_name}_contrastive_loss.png")
+    plt.savefig(dir + f"{job_name}_contrastive_loss.png")
 
 
-def plot_correlation(args, df, fn):
+def plot_correlation(job_name, df, fn):
 
     dir = os.getcwd() + f"/results/correlation/"
     if not os.path.exists(dir):
@@ -82,7 +82,7 @@ def plot_correlation(args, df, fn):
     df["x"] = groups.cumcount()
 
     # plotting
-    pdf_pages = PdfPages(dir + f"{args.job_name}_{fn}.pdf")
+    pdf_pages = PdfPages(dir + f"{job_name}_{fn}.pdf")
 
     colors = {"theta": "g", "alpha": "r", "beta": "b", "gamma": "c", "highgamma": "m"}
 
@@ -138,19 +138,19 @@ def plot_correlation(args, df, fn):
     pdf_pages.close()
 
 
-def plot_recon_signals(args, df):
+def plot_recon_signals(job_name, num_epochs, df):
 
     dir = os.getcwd() + f"/results/recon_signals/"
     if not os.path.exists(dir):
         os.makedirs(dir)
 
     # plotting
-    pdf_pages = PdfPages(dir + f"{args.job_name}_recon_signals.pdf")
+    pdf_pages = PdfPages(dir + f"{job_name}_recon_signals.pdf")
     elecs = df.groupby("elec")
 
     for key, elec in elecs:
 
-        fig, axs = plt.subplots(int(np.ceil(args.num_epochs / 2)), 2, figsize=(10, 15))
+        fig, axs = plt.subplots(int(np.ceil(num_epochs / 2)), 2, figsize=(10, 15))
 
         axs = axs.flatten()
 

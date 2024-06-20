@@ -4,6 +4,8 @@ import numpy as np
 import random
 from einops import rearrange
 
+from config import ECoGDataConfig, ViTConfig
+
 
 def seed_everything(seed=0, cudnn_deterministic=True):
     random.seed(seed)
@@ -31,7 +33,8 @@ def normalize(raw_signal):
 
 
 def rearrange_signals(
-    args,
+    data_config: ECoGDataConfig,
+    model_config: ViTConfig,
     model,
     device,
     signal,
@@ -76,46 +79,46 @@ def rearrange_signals(
     seen_recon_signal = rearrange(
         seen_output,
         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-        c=len(args.bands),
+        c=len(data_config.bands),
         d=1,
-        f=num_frames // args.frame_patch_size,
+        f=num_frames // model_config.frame_patch_size,
         pd=1,
-        ps=args.patch_size,
-        pf=args.frame_patch_size,
+        ps=model_config.patch_size,
+        pf=model_config.frame_patch_size,
     )
 
     seen_target_signal = rearrange(
         seen_target,
         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-        c=len(args.bands),
+        c=len(data_config.bands),
         d=1,
-        f=num_frames // args.frame_patch_size,
+        f=num_frames // model_config.frame_patch_size,
         pd=1,
-        ps=args.patch_size,
-        pf=args.frame_patch_size,
+        ps=model_config.patch_size,
+        pf=model_config.frame_patch_size,
     )
 
     # rearrange unseen patches into signal
     unseen_recon_signal = rearrange(
         unseen_output,
         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-        c=len(args.bands),
+        c=len(data_config.bands),
         d=1,
-        f=num_frames // args.frame_patch_size,
+        f=num_frames // model_config.frame_patch_size,
         pd=1,
-        ps=args.patch_size,
-        pf=args.frame_patch_size,
+        ps=model_config.patch_size,
+        pf=model_config.frame_patch_size,
     )
 
     unseen_target_signal = rearrange(
         unseen_target,
         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-        c=len(args.bands),
+        c=len(data_config.bands),
         d=1,
-        f=num_frames // args.frame_patch_size,
+        f=num_frames // model_config.frame_patch_size,
         pd=1,
-        ps=args.patch_size,
-        pf=args.frame_patch_size,
+        ps=model_config.patch_size,
+        pf=model_config.frame_patch_size,
     )
 
     return (
