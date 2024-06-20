@@ -398,8 +398,8 @@ def train_model(
                 test_losses.append(loss.item())
                 seen_test_losses.append(seen_loss.item())
 
-                # save original and reconstructed signal for plotting (highgamma for one sample for now)
-                if test_i == 0:
+                # save original and reconstructed signal for plotting (for highgamma)
+                if test_i in [0, 5, 10, 15, 20]:
 
                     if args.norm == "batch" or args.norm == "hour":
                         full_recon_signal = normalize(full_recon_signal)
@@ -407,7 +407,7 @@ def train_model(
                         full_recon_signal = full_recon_signal
 
                     new_model_recon = get_model_recon(
-                        args, signal, full_recon_signal, epoch
+                        args, signal, full_recon_signal, test_i, epoch
                     )
                     model_recon = pd.concat([model_recon, new_model_recon])
 

@@ -150,7 +150,7 @@ def get_correlation_across_elecs(args, signal, recon_signal, epoch, dl_i):
 
         res = {}
         res["epoch"] = epoch
-        res["train_i"] = dl_i
+        res["dl_i"] = dl_i
         res["elec"] = 0
 
         # average across electrodes
@@ -185,9 +185,9 @@ def get_correlation_across_elecs(args, signal, recon_signal, epoch, dl_i):
     return new_test_corr
 
 
-def get_model_recon(args, signal, recon_signal, epoch):
+def get_model_recon(args, signal, recon_signal, dl_i, epoch):
     """
-    Get original and reconstructed sample signal.
+    Get original and reconstructed sample signal across batch.
 
     Args:
         args
@@ -210,11 +210,12 @@ def get_model_recon(args, signal, recon_signal, epoch):
 
             res = {}
             res["epoch"] = epoch
+            res["dl_i"] = dl_i
             res["elec"] = i
             i += 1
 
-            x = signal[0, (len(args.bands) - 1), :, 0, h, w].flatten()
-            y = recon_signal[0, (len(args.bands) - 1), :, 0, h, w].flatten()
+            x = signal[:, (len(args.bands) - 1), :, 0, h, w].flatten()
+            y = recon_signal[:, (len(args.bands) - 1), :, 0, h, w].flatten()
 
             if np.isnan(x).any() or np.isnan(y).any():
                 continue

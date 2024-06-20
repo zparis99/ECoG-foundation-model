@@ -10,8 +10,13 @@ dataset_full
 *.ipynb
 *.ckpt
 *.zip
+*.mat
+*.pkl
 
 logs
 results
 utils
+
+signal
+word-embeddings
 
