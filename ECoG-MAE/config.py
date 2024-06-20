@@ -24,7 +24,7 @@ class ECoGDataConfig:
     train_data_proportion: float = 0.9
     # Number of seconds of data to use for a training example.
     sample_length: int = 2
-    # TODO: Figure out what this does.
+    # If true then shuffle the data before splitting to train and eval.
     shuffle: bool = False
     # If True then uses a mock data loader.
     test_loader: bool = False
@@ -34,7 +34,6 @@ class ECoGDataConfig:
 class TrainerConfig:
     # Learning rate for training. If 0 then uses Adam scheduler.
     learning_rate: float = 0.0
-    # TODO: Add max learning rate
     # Number of epochs to train over data.
     num_epochs: int = 10
     # Type of loss to use.
@@ -47,11 +46,11 @@ class ViTConfig:
     dim: int = 512
     # Dimensionality of feedforward network after attention layer.
     mlp_dim: int = 512
-    # TODO
+    # The number of electrodes in a patch.
     patch_size: int = 0
-    # TODO
+    # The number of frames to include in a tube per video mae.
     frame_patch_size: int = 0
-    # TODO
+    # Specifies per dimension patch size. [depth, height, width]
     patch_dims: list[int] = field(default_factory=lambda: [1, 1, 1])
     # Prepend classification token to input if True. Always True if
     # use_contrastive_loss is True.
