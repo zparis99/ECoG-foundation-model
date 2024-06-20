@@ -47,7 +47,7 @@ def rearrange_signals(
 ):
 
     # parts of the reconstructed signal that were not seen by the encoder
-    recon_output = decoder_out[:, len(tube_mask.nonzero()) :]
+    unseen_output = decoder_out[:, len(tube_mask.nonzero()) :]
 
     # parts of the reconstructed signal that were seen by the encoder
     seen_output = decoder_out[:, : len(tube_mask.nonzero())]
@@ -57,24 +57,26 @@ def rearrange_signals(
     target_patches_vit = rearrange(target_patches, "b ... d -> b (...) d")
 
     # parts of the original signal not seen by the encoder
-    recon_target = target_patches_vit[:, decoder_mask][:, decoder_padding_mask]
+    unseen_target = target_patches_vit[:, decoder_mask][:, decoder_padding_mask]
 
     # parts of the original signal seen by the encoder
     seen_target = target_patches_vit[:, ~decoder_mask]
 
     # rearranging seen and unseen parts of the reconstructed signal into original position
-    recon_patches = torch.zeros(target_patches_vit.shape).fill_(float("nan")).to(device)
+    full_recon_patches = (
+        torch.zeros(target_patches_vit.shape).fill_(float("nan")).to(device)
+    )
 
     tube_idx = torch.nonzero(tube_mask).squeeze()
     decoder_idx = torch.nonzero(decoder_mask & padding_mask).squeeze()
 
-    recon_patches[:, tube_idx, :] = seen_output
-    recon_patches[:, decoder_idx, :] = recon_output
+    full_recon_patches[:, tube_idx, :] = seen_output
+    full_recon_patches[:, decoder_idx, :] = unseen_output
 
-    recon_signal = model.unpatchify(recon_patches)
+    full_recon_signal = model.unpatchify(full_recon_patches)
 
     # rearrange seen patches into signal
-    seen_output_signal = rearrange(
+    seen_recon_signal = rearrange(
         seen_output,
         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
         c=len(data_config.bands),
@@ -97,8 +99,8 @@ def rearrange_signals(
     )
 
     # rearrange unseen patches into signal
-    recon_output_signal = rearrange(
-        recon_output,
+    unseen_recon_signal = rearrange(
+        unseen_output,
         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
         c=len(data_config.bands),
         d=1,
@@ -108,8 +110,8 @@ def rearrange_signals(
         pf=model_config.frame_patch_size,
     )
 
-    recon_target_signal = rearrange(
-        recon_target,
+    unseen_target_signal = rearrange(
+        unseen_target,
         "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
         c=len(data_config.bands),
         d=1,
@@ -120,15 +122,15 @@ def rearrange_signals(
     )
 
     return (
-        recon_signal,
-        recon_output,
-        recon_target,
+        full_recon_signal,
+        unseen_output,
+        unseen_target,
         seen_output,
         seen_target,
         seen_target_signal,
-        seen_output_signal,
-        recon_target_signal,
-        recon_output_signal,
+        seen_recon_signal,
+        unseen_target_signal,
+        unseen_recon_signal,
     )
 
 

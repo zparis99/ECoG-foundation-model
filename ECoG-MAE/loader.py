@@ -50,16 +50,54 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         # load edf and extract signal
         raw = read_raw(self.path)
-        sig = raw.get_data(
-            picks=grid,
-            start=(n_samples * self.index),
-            stop=(n_samples * (self.index + 1)),
-        )
 
-        # zero pad if chunk is shorter than 2 sec
-        if len(sig[0]) < n_samples:
-            padding = np.zeros((64, n_samples - len(sig[0])))
-            sig = np.concatenate((sig, padding), axis=1)
+        # crop 2 sec sample segment
+        sample = raw.crop(self.index * 2, (self.index + 1) * 2, include_tmax=False)
+        sample.load_data(verbose=False)
+
+        def func(input, ch_idx):
+
+            output = input - self.means[ch_idx] / self.stds[ch_idx]
+
+            return output
+
+        if self.args.norm == "hour":
+
+            for i in range(0, 64):
+
+                raw.apply_function(func, picks=[i], channel_wise=True, ch_idx=i)
+
+        # Extract frequency bands
+        band_raws = []
+
+        bands = {
+            "alpha": (8, 13),
+            "beta": (13, 30),
+            "theta": (4, 8),
+            "gamma": (30, 55),
+            "highgamma": (70, 200),
+        }
+
+        iir_params = dict(order=4, ftype="butter")
+        for band, freqs in bands.items():
+            band_raw = sample.copy()
+            band_raw = band_raw.filter(
+                *freqs, picks="data", method="iir", iir_params=iir_params, verbose=False
+            )
+            band_raw = band_raw.apply_hilbert(envelope=True, verbose=False)
+            band_raws.append(band_raw)
+
+        sig = np.zeros((len(self.bands), 64, n_samples))
+
+        for i in range(0, 5):
+
+            if len(band_raws[i].get_data(picks=grid)[1]) < n_samples:
+                padding = np.zeros((64, n_samples - len(sig[0])))
+                sig = np.concatenate((sig, padding), axis=1)
+            else:
+                sig[i, :, :] = band_raws[i].get_data(
+                    picks=grid,
+                )
 
         # zero pad if channel is not included in grid #TODO a bit clunky right now, implement in a better and more flexible way
         # since we will load by index position of channel (so if a channel is not included it will load channel n+1 at position 1),
@@ -70,61 +108,12 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             # first we check whether the channel is included
             if np.isin(chn, raw.info.ch_names) == False:
                 # if not we insert 0 padding and shift upwards
-                sig = np.insert(sig, i, np.zeros((1, n_samples)), axis=0)
+                sig = np.insert(sig, i, np.zeros((5, 1, n_samples)), axis=1)
 
         # delete items that were shifted upwards
-        sig = sig[:64, :]
+        sig = sig[:, :64, :]
 
-        # normalize signal within each 2 sec chunk - #TODO implement in vectorized form
-        if self.config.norm == "sample":
-            for ch in range(0, len(sig)):
-                if np.std(sig[ch]) == 0:
-                    continue
-                else:
-                    sig[ch] = sig[ch] - np.mean(sig[ch]) / np.std(sig[ch])
-        elif self.config.norm == "hour":
-            # TODO
-            for ch in range(0, len(sig)):
-                if np.std(sig[ch]) == 0:
-                    continue
-                else:
-                    sig[ch] = sig[ch] - self.means[ch] / self.stds[ch]
-
-        # extract frequency bands
-        nyq = 0.5 * self.fs
-        filtered = []
-
-        for i in range(0, len(self.bands)):
-            lowcut = self.bands[i][0]
-            highcut = self.bands[i][1]
-            # divide by self.fs instead? #TODO
-            low = lowcut / nyq
-            high = highcut / nyq
-
-            sos = scipy.signal.butter(N=4, Wn=[low, high], btype="band", output="sos")
-            filtered.append(scipy.signal.sosfilt(sos, sig))
-
-        filtered = np.array(filtered)
-
-        if self.config.env:
-            # compute power envelope
-            envelope = np.abs(scipy.signal.hilbert(filtered, axis=2))
-
-            # look at power spectrum instead #TODOs
-
-            # # decimate before - low pass filter if new_fs == 20 then < 10 Hz
-            # sos = scipy.signal.butter(
-            #     N=4, Wn=[0.5 * self.new_fs / 0.5 * self.new_fs], btype="low", output="sos"
-            # )
-            # envelope = scipy.signal.sosfilt(sos, envelope)
-
-            # resample
-            resampled = scipy.signal.resample(envelope, n_new_samples, axis=2)
-
-        else:
-            resampled = scipy.signal.resample(filtered, n_new_samples, axis=2)
-
-        # try smoothing window averaging instead #TODO
+        resampled = scipy.signal.resample(sig, n_new_samples, axis=2)
 
         # rearrange into shape c*t*d*h*w, where
         # c = freq bands,
@@ -152,13 +141,9 @@ def get_signal_stats(path):
 
     for i in range(0, 64):
 
-        if i in [58, 59, 60]:
-            means.append(0)
-            stds.append(0)
-        else:
-            signal = reader.readSignal(i, 0)
-            means.append(np.mean(signal))
-            stds.append(np.std(signal))
+        signal = reader.readSignal(i, 0)
+        means.append(np.mean(signal))
+        stds.append(np.std(signal))
 
     return means, stds
 

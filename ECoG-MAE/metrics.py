@@ -42,6 +42,7 @@ def get_signal_stats(args, signal, signal_stats, epoch, dl_i):
 
 
 def get_correlation(bands: list[list[int]], signal, recon_signal, epoch, dl_i):
+  
     """
     Get pearson correlation between original and reconstructed signal.
 
@@ -60,8 +61,14 @@ def get_correlation(bands: list[list[int]], signal, recon_signal, epoch, dl_i):
     signal = np.array(signal.detach().detach().cpu())
     recon_signal = np.array(recon_signal.detach().cpu())
 
+    # rearranging tube_mask into h*w shape
+    tube_mask = rearrange(tube_mask[:64], "(h w) -> h w", h=8, w=8)
+
     # calculate correlation
     res_list = []
+    res_seen_list = []
+    res_unseen_list = []
+
     i = 1
     band_names = ["theta", "alpha", "beta", "gamma", "highgamma"]
 
@@ -71,6 +78,10 @@ def get_correlation(bands: list[list[int]], signal, recon_signal, epoch, dl_i):
             res["epoch"] = epoch
             res["dl_i"] = dl_i
             res["elec"] = i
+
+            res_seen = res.copy()
+            res_unseen = res.copy()
+
             i += 1
             for c in range(0, len(bands)):
                 # correlate across samples in batch
@@ -79,7 +90,7 @@ def get_correlation(bands: list[list[int]], signal, recon_signal, epoch, dl_i):
                 # add check to make sure x and y are the same length #TODO
                 n = len(x)
                 if np.isnan(x).any() or np.isnan(y).any():
-                    r = 0
+                    r = np.nan
                 else:
                     r = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (
                         np.sqrt(
@@ -88,13 +99,29 @@ def get_correlation(bands: list[list[int]], signal, recon_signal, epoch, dl_i):
                         )
                     )
 
-                res["band"] = band_names[c]
+
+                res["band"] = band_namess[c]
+                res_seen["band"] = band_namess[c]
+                res_unseen["band"] = band_names[c]
+
                 res["corr"] = r
+                if tube_mask[h, w]:
+                    res_seen["corr"] = r
+                    res_unseen["corr"] = np.nan
+
+                else:
+                    res_unseen["corr"] = r
+                    res_seen["corr"] = np.nan
+
                 res_list.append(res.copy())
+                res_seen_list.append(res_seen.copy())
+                res_unseen_list.append(res_unseen.copy())
 
     new_corr = pd.DataFrame(res_list)
+    new_seen_corr = pd.DataFrame(res_seen_list)
+    new_unseen_corr = pd.DataFrame(res_unseen_list)
 
-    return new_corr
+    return new_corr, new_seen_corr, new_unseen_corr
 
 
 def get_correlation_across_elecs(bands, signal, recon_signal, epoch, dl_i):
@@ -125,7 +152,7 @@ def get_correlation_across_elecs(bands, signal, recon_signal, epoch, dl_i):
 
         res = {}
         res["epoch"] = epoch
-        res["train_i"] = dl_i
+        res["dl_i"] = dl_i
         res["elec"] = 0
 
         # average across electrodes
@@ -159,10 +186,11 @@ def get_correlation_across_elecs(bands, signal, recon_signal, epoch, dl_i):
 
     return new_test_corr
 
-
+  
 def get_model_recon(bands, signal, recon_signal, epoch):
+
     """
-    Get original and reconstructed sample signal.
+    Get original and reconstructed sample signal across batch.
 
     Args:
         bands: frequency bands used for filtering
@@ -171,7 +199,7 @@ def get_model_recon(bands, signal, recon_signal, epoch):
         epoch: current epoch
 
     Returns:
-        new_model_recon: dataframe containing timnecourse of original and reconstructed sample signal for each epoch.
+        new_model_recon: dataframe containing timecourse of original and reconstructed sample signal for each epoch.
     """
 
     signal = np.array(signal.detach().detach().cpu())
@@ -185,6 +213,7 @@ def get_model_recon(bands, signal, recon_signal, epoch):
 
             res = {}
             res["epoch"] = epoch
+            res["dl_i"] = dl_i
             res["elec"] = i
             i += 1
 
