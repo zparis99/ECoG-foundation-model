@@ -24,3 +24,9 @@ snapshot_download(
 
 with zipfile.ZipFile(f"{local_dir}/dataset.zip", "r") as zip_ref:
     zip_ref.extractall(local_dir)
+
+with zipfile.ZipFile(f"{local_dir}/signal.zip", "r") as zip_ref:
+    zip_ref.extractall(local_dir)
+
+with zipfile.ZipFile(f"{local_dir}/word-embeddings.zip", "r") as zip_ref:
+    zip_ref.extractall(local_dir)

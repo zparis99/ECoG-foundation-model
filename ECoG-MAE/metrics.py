@@ -41,8 +41,9 @@ def get_signal_stats(args, signal, signal_stats, epoch, dl_i):
     return new_signal_stats
 
 
-def get_correlation(bands: list[list[int]], signal, recon_signal, epoch, dl_i):
-  
+def get_correlation(
+    bands: list[list[int]], signal, recon_signal, tube_mask, epoch, dl_i
+):
     """
     Get pearson correlation between original and reconstructed signal.
 
@@ -99,9 +100,8 @@ def get_correlation(bands: list[list[int]], signal, recon_signal, epoch, dl_i):
                         )
                     )
 
-
-                res["band"] = band_namess[c]
-                res_seen["band"] = band_namess[c]
+                res["band"] = band_names[c]
+                res_seen["band"] = band_names[c]
                 res_unseen["band"] = band_names[c]
 
                 res["corr"] = r
@@ -186,9 +186,8 @@ def get_correlation_across_elecs(bands, signal, recon_signal, epoch, dl_i):
 
     return new_test_corr
 
-  
-def get_model_recon(bands, signal, recon_signal, epoch):
 
+def get_model_recon(bands, signal, recon_signal, epoch, dl_i):
     """
     Get original and reconstructed sample signal across batch.
 

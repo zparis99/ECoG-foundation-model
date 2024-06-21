@@ -24,7 +24,10 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.new_fs = config.new_fs
         self.sample_secs = config.sample_length
         # since we take sample_length sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by sample_length
-        self.max_samples = highlevel.read_edf_header(edf_file=self.path)["Duration"] / config.sample_length
+        self.max_samples = (
+            highlevel.read_edf_header(edf_file=self.path)["Duration"]
+            / config.sample_length
+        )
         if config.norm == "hour":
             self.means, self.stds = get_signal_stats(self.path)
         self.index = 0
@@ -61,7 +64,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
             return output
 
-        if self.args.norm == "hour":
+        if self.config.norm == "hour":
 
             for i in range(0, 64):
 
@@ -284,7 +287,9 @@ def dl_setup(
     )
 
     # load and concatenate data for test split
-    test_filepaths, _, test_samples = get_dataset_path_info(config.ecog_data_config.sample_length, root, test_data)
+    test_filepaths, _, test_samples = get_dataset_path_info(
+        config.ecog_data_config.sample_length, root, test_data
+    )
     test_datasets = [
         ECoGDataset(test_path, fs, config.ecog_data_config)
         for test_path in test_filepaths

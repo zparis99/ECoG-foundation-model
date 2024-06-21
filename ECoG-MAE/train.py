@@ -102,7 +102,9 @@ def train_model(
     tests = []
 
     progress_bar = tqdm(
-        range(epoch, config.trainer_config.num_epochs), ncols=1200, disable=(local_rank != 0)
+        range(epoch, config.trainer_config.num_epochs),
+        ncols=1200,
+        disable=(local_rank != 0),
     )
     for epoch in progress_bar:
         start = t.time()
@@ -137,22 +139,34 @@ def train_model(
                 signal = torch.nan_to_num(signal)
 
                 # tube mask ratio as given by args for model train
-                tube_mask_ratio = args.tube_mask_ratio
+                tube_mask_ratio = config.video_mae_task_config.tube_mask_ratio
 
                 # masking out parts of the input to the encoder (same mask across frames)
                 tube_mask = get_tube_mask(
-                    model_config.frame_patch_size, config.video_mae_task_config.tube_mask_ratio, num_patches, num_frames, padding_mask, device
+                    model_config.frame_patch_size,
+                    config.video_mae_task_config.tube_mask_ratio,
+                    num_patches,
+                    num_frames,
+                    padding_mask,
+                    device,
                 )
 
                 # selecting parts of the signal for the decoder to reconstruct
                 if config.video_mae_task_config.decoder_mask_ratio == 0:
                     decoder_mask = get_decoder_mask(
-                        config.video_mae_task_config.decoder_mask_ratio, num_patches, tube_mask, device
+                        config.video_mae_task_config.decoder_mask_ratio,
+                        num_patches,
+                        tube_mask,
+                        device,
                     )
                 else:
                     if config.video_mae_task_config.running_cell_masking:
                         decoder_mask = get_running_cell_mask(
-                            config.video_mae_task_config.decoder_mask_ratio, model_config.frame_patch_size, num_frames, tube_mask, device
+                            config.video_mae_task_config.decoder_mask_ratio,
+                            model_config.frame_patch_size,
+                            num_frames,
+                            tube_mask,
+                            device,
                         )
 
                 # make sure the decoder only reconstructs channels that were not discarded during preprocessing
@@ -199,7 +213,12 @@ def train_model(
                 # get correlation between original and reconstructed signal
                 new_train_corr, new_seen_train_corr, new_unseen_train_corr = (
                     get_correlation(
-                        config.ecog_data_config.bands, signal, full_recon_signal, tube_mask, epoch, train_i
+                        config.ecog_data_config.bands,
+                        signal,
+                        full_recon_signal,
+                        tube_mask,
+                        epoch,
+                        train_i,
                     )
                 )
                 train_corr = pd.concat([train_corr, new_train_corr])
@@ -211,14 +230,22 @@ def train_model(
                 )
 
                 new_seen_train_avg_corr = get_correlation_across_elecs(
-                    config.ecog_data_config.bands, seen_target_signal, seen_recon_signal, epoch, train_i
+                    config.ecog_data_config.bands,
+                    seen_target_signal,
+                    seen_recon_signal,
+                    epoch,
+                    train_i,
                 )
                 seen_train_avg_corr = pd.concat(
                     [seen_train_avg_corr, new_seen_train_avg_corr]
                 )
 
                 new_unseen_train_avg_corr = get_correlation_across_elecs(
-                    config.ecog_data_config.bands, unseen_target_signal, unseen_recon_signal, epoch, train_i
+                    config.ecog_data_config.bands,
+                    unseen_target_signal,
+                    unseen_recon_signal,
+                    epoch,
+                    train_i,
                 )
                 unseen_train_avg_corr = pd.concat(
                     [unseen_train_avg_corr, new_unseen_train_avg_corr]
@@ -229,8 +256,8 @@ def train_model(
                     loss = mse(recon_output, recon_target)
                     seen_loss = mse(seen_output, seen_target)
                 elif config.trainer_config.loss == "signal":
-                    loss = mse(unseen_output_signal, unseen_target_signal)
-                    seen_loss = mse(seen_output_signal, seen_target_signal)
+                    loss = mse(unseen_recon_signal, unseen_target_signal)
+                    seen_loss = mse(seen_recon_signal, seen_target_signal)
                 elif config.trainer_config.loss == "both":
                     loss = mse(recon_output, recon_target) + mse(
                         unseen_recon_signal, unseen_target_signal
@@ -291,18 +318,30 @@ def train_model(
 
                 # masking out parts of the input to the encoder (same mask across frames)
                 tube_mask = get_tube_mask(
-                    model_config.frame_patch_size, config.video_mae_task_config.tube_mask_ratio, num_patches, num_frames, padding_mask, device
+                    model_config.frame_patch_size,
+                    config.video_mae_task_config.tube_mask_ratio,
+                    num_patches,
+                    num_frames,
+                    padding_mask,
+                    device,
                 )
 
                 # selecting parts of the signal for the decoder to reconstruct
                 if config.video_mae_task_config.decoder_mask_ratio == 0:
                     decoder_mask = get_decoder_mask(
-                        config.video_mae_task_config.decoder_mask_ratio, num_patches, tube_mask, device
+                        config.video_mae_task_config.decoder_mask_ratio,
+                        num_patches,
+                        tube_mask,
+                        device,
                     )
                 elif config.video_mae_task_config.running_cell_masking:
-                        decoder_mask = get_running_cell_mask(
-                            config.video_mae_task_config.decoder_mask_ratio, model_config.frame_patch_size, num_frames, tube_mask, device
-                        )
+                    decoder_mask = get_running_cell_mask(
+                        config.video_mae_task_config.decoder_mask_ratio,
+                        model_config.frame_patch_size,
+                        num_frames,
+                        tube_mask,
+                        device,
+                    )
 
                 # make sure the decoder only reconstructs channels that were not discarded during preprocessing
                 decoder_padding_mask = padding_mask[decoder_mask]
@@ -348,7 +387,12 @@ def train_model(
                 # get correlation between original and reconstructed signal
                 new_test_corr, new_seen_test_corr, new_unseen_test_corr = (
                     get_correlation(
-                        config.ecog_data_config.bands, signal, full_recon_signal, tube_mask, epoch, test_i
+                        config.ecog_data_config.bands,
+                        signal,
+                        full_recon_signal,
+                        tube_mask,
+                        epoch,
+                        test_i,
                     )
                 )
                 test_corr = pd.concat([test_corr, new_test_corr])
@@ -358,14 +402,22 @@ def train_model(
                 unseen_test_corr = pd.concat([unseen_test_corr, new_unseen_test_corr])
 
                 new_seen_test_avg_corr = get_correlation_across_elecs(
-                    args, seen_target_signal, seen_recon_signal, epoch, test_i
+                    config.ecog_data_config.bands,
+                    seen_target_signal,
+                    seen_recon_signal,
+                    epoch,
+                    test_i,
                 )
                 seen_test_avg_corr = pd.concat(
                     [seen_test_avg_corr, new_seen_test_avg_corr]
                 )
 
                 new_unseen_test_avg_corr = get_correlation_across_elecs(
-                    args, unseen_target_signal, unseen_recon_signal, epoch, test_i
+                    config.ecog_data_config.bands,
+                    unseen_target_signal,
+                    unseen_recon_signal,
+                    epoch,
+                    test_i,
                 )
                 unseen_test_avg_corr = pd.concat(
                     [unseen_test_avg_corr, new_unseen_test_avg_corr]
@@ -376,8 +428,8 @@ def train_model(
                     loss = mse(recon_output, recon_target)
                     seen_loss = mse(seen_output, seen_target)
                 elif config.trainer_config.loss == "signal":
-                    loss = mse(recon_output_signal, recon_target_signal)
-                    seen_loss = mse(seen_output_signal, seen_target_signal)
+                    loss = mse(unseen_recon_signal, unseen_target_signal)
+                    seen_loss = mse(seen_recon_signal, seen_target_signal)
                 elif config.trainer_config.loss == "both":
                     loss = mse(recon_output, recon_target) + mse(
                         unseen_recon_signal, unseen_target_signal
@@ -409,7 +461,13 @@ def train_model(
                     else:
                         full_recon_signal = full_recon_signal
 
-                    new_model_recon = get_model_recon(config.ecog_data_config.bands,  signal, full_recon_signal, epoch)
+                    new_model_recon = get_model_recon(
+                        config.ecog_data_config.bands,
+                        signal,
+                        full_recon_signal,
+                        epoch,
+                        test_i,
+                    )
                     model_recon = pd.concat([model_recon, new_model_recon])
 
                     dir = os.getcwd() + f"/results/full_recon_signals/"
@@ -457,7 +515,7 @@ def train_model(
         )
 
         seen_train_corr.to_csv(
-            dir + f"{args.job_name}_seen_train_corr.csv",
+            dir + f"{config.job_name}_seen_train_corr.csv",
             index=False,
         )
 
@@ -492,7 +550,7 @@ def train_model(
         )
 
         seen_test_avg_corr.to_csv(
-            dir + f"{args.job_name}_seen_test_avg_corr.csv",
+            dir + f"{config.job_name}_seen_test_avg_corr.csv",
             index=False,
         )
 
@@ -545,7 +603,11 @@ def train_model(
             model_recon,
         ):
             plot_losses(
-                config.job_name, train_losses, seen_train_losses, test_losses, seen_test_losses
+                config.job_name,
+                train_losses,
+                seen_train_losses,
+                test_losses,
+                seen_test_losses,
             )
             if use_contrastive_loss:
                 plot_contrastive_loss(config.job_name, contrastive_losses)
@@ -554,16 +616,26 @@ def train_model(
 
             plot_correlation(config.job_name, train_corr, "train_correlation")
             plot_correlation(config.job_name, seen_train_corr, "seen_train_correlation")
-            plot_correlation(config.job_name, unseen_train_corr, "unseen_train_correlation")
-            plot_correlation(config.job_name, seen_train_avg_corr, "seen_train_avg_correlation")
+            plot_correlation(
+                config.job_name, unseen_train_corr, "unseen_train_correlation"
+            )
+            plot_correlation(
+                config.job_name, seen_train_avg_corr, "seen_train_avg_correlation"
+            )
             plot_correlation(
                 config.job_name, unseen_train_avg_corr, "unseen_train_avg_correlation"
             )
             plot_correlation(config.job_name, test_corr, "test_correlation")
             plot_correlation(config.job_name, seen_test_corr, "seen_test_correlation")
-            plot_correlation(config.job_name, unseen_test_corr, "unseen_test_correlation")
-            plot_correlation(config.job_name, seen_test_avg_corr, "seen_test_avg_correlation")
-            plot_correlation(config.job_name, unseen_test_avg_corr, "unseen_test_avg_correlation")
+            plot_correlation(
+                config.job_name, unseen_test_corr, "unseen_test_correlation"
+            )
+            plot_correlation(
+                config.job_name, seen_test_avg_corr, "seen_test_avg_correlation"
+            )
+            plot_correlation(
+                config.job_name, unseen_test_avg_corr, "unseen_test_avg_correlation"
+            )
             plot_recon_signals(config.job_name, model_recon)
 
             plt.close("all")
