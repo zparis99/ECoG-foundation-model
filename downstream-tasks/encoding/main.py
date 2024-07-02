@@ -19,7 +19,7 @@ from utils import (
     run_regression,
     write_encoding_results,
 )
-# from utils import load_pickle, main_timer, write_config
+from utils import load_pickle, main_timer, write_config
 
 
 def get_cpu_count(min_cpus=2):
