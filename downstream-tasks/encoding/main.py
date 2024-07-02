@@ -75,6 +75,20 @@ def process_subjects(args):
     return electrode_info
 
 
+def return_stitch_index(args):
+    """[summary]
+    Args:
+        args ([type]): [description]
+
+    Returns:
+        stitch_index: list[int] Describing the convo onset and offsets within the word datum to specify the borders of 
+    """
+    if args.PICKLE_DIR and args.stich_file:
+        stitch_file = os.path.join(args.PICKLE_DIR, args.stitch_file)
+        return [0] + load_pickle(stitch_file)
+    return None
+
+
 def single_electrode_encoding(electrode, args, datum, stitch_index):
     """Doing encoding for one electrode
 
@@ -220,6 +234,7 @@ def main():
     write_config(vars(args))
 
     # Locate and read datum
+    stitch_index = return_stitch_index(args)
     datum = read_datum(args)
 
     # Processing significant electrodes or individual subjects

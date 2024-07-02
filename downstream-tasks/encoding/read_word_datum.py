@@ -91,9 +91,8 @@ def load_datum(file_name):
     Returns:
         DataFrame: datum
     """
-    datum = load_pickle(file_name)
-    df = pd.DataFrame.from_dict(datum)
-    return df
+    with open(file_name, "rb") as fp:
+        return pd.read_csv(fp)
 
 
 def process_datum(args, df, stitch):
@@ -530,7 +529,7 @@ def mod_datum(args, datum):
     return datum
 
 
-def read_datum(args, stitch):
+def read_datum(args, stitch=None):
     """Load, process, and filter datum
 
     Args:
@@ -540,8 +539,10 @@ def read_datum(args, stitch):
     Returns:
         DataFrame: processed and filtered datum
     """
-    emb_df = load_datum(args.emb_df_path)
-    base_df = load_datum(args.base_df_path)
+    if args.emb_df_path:
+        emb_df = load_datum(args.emb_df_path)
+    if args.base_df_path:
+        base_df = load_datum(args.base_df_path)
 
     df = pd.merge(
         base_df, emb_df, left_index=True, right_index=True
