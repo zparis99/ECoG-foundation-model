@@ -8,18 +8,18 @@ from multiprocessing import Pool, cpu_count
 
 import numpy as np
 import pandas as pd
-from tfsenc_config import setup_environ
-from tfsenc_load_signal import load_electrode_data
-from tfsenc_parser import parse_arguments
-from tfsenc_read_datum import read_datum
-from tfsenc_utils import (
+from config import setup_environ
+from load_signal import load_electrode_data
+from parser import parse_arguments
+from read_word_datum import read_datum
+from utils import (
     build_XY,
     get_groupkfolds,
     get_kfolds,
     run_regression,
     write_encoding_results,
 )
-from utils import load_pickle, main_timer, write_config
+# from utils import load_pickle, main_timer, write_config
 
 
 def get_cpu_count(min_cpus=2):
@@ -27,19 +27,6 @@ def get_cpu_count(min_cpus=2):
         min_cpus = cpu_count()
 
     return min_cpus
-
-
-def return_stitch_index(args):
-    """[summary]
-    Args:
-        args ([type]): [description]
-
-    Returns:
-        [type]: [description]
-    """
-    stitch_file = os.path.join(args.PICKLE_DIR, args.stitch_file)
-    stitch_index = [0] + load_pickle(stitch_file)
-    return stitch_index
 
 
 def process_subjects(args):
@@ -233,8 +220,7 @@ def main():
     write_config(vars(args))
 
     # Locate and read datum
-    stitch_index = return_stitch_index(args)
-    datum = read_datum(args, stitch_index)
+    datum = read_datum(args)
 
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
