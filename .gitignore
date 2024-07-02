@@ -6,6 +6,8 @@ checkpoints
 dataset
 dataset_full
 
+*ipynb_checkpoints*
+
 *pth
 *.ipynb
 *.ckpt
