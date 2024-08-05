@@ -12,7 +12,7 @@ from config import setup_environ
 from load_signal import load_electrode_data
 from parser import parse_arguments
 from read_word_datum import read_datum
-from utils import (
+from encoding_utils import (
     build_XY,
     get_groupkfolds,
     get_kfolds,
@@ -28,51 +28,46 @@ def get_cpu_count(min_cpus=2):
 
     return min_cpus
 
+def create_output_directory(args):
+    # output_prefix_add = '-'.join(args.emb_file.split('_')[:-1])
 
-def process_subjects(args):
-    """Process electrodes for subjects (requires electrode list or sig elec file)
+    # folder_name = folder_name + '-pca_' + str(args.reduce_to) + 'd'
+    # full_output_dir = os.path.join(args.output_dir, folder_name)
+
+    folder_name = "-".join([args.output_prefix, str(args.sid)]).strip("-")
+
+    if args.model_mod:
+        parent_folder_name = "-".join([args.output_parent_dir, args.model_mod])
+    else:
+        parent_folder_name = args.output_parent_dir
+    full_output_dir = os.path.join(
+        os.getcwd(), "results", args.project_id, parent_folder_name, folder_name
+    )
+
+    os.makedirs(full_output_dir, exist_ok=True)
+
+    return full_output_dir
+
+
+def clean_lm_model_name(item):
+    """Remove unnecessary parts from the language model name.
 
     Args:
-        args (namespace): commandline arguments
+        item (str/list): full model name from HF Hub
 
     Returns:
-        electrode_info (dict): Dictionary in the format (sid, elec_id): elec_name
+        (str/list): pretty model name
+
+    Example:
+        clean_lm_model_name(EleutherAI/gpt-neo-1.3B) == 'gpt-neo-1.3B'
     """
-    ds = load_pickle(os.path.join(args.PICKLE_DIR, args.electrode_file))
-    df = pd.DataFrame(ds)
+    if isinstance(item, str):
+        return item.split("/")[-1]
 
-    if args.sig_elec_file:  # sig elec files for 1 or more sid (used for 777)
-        sig_elec_file = os.path.join(
-            os.path.join(os.getcwd(), "data", args.sig_elec_file)
-        )
-        sig_elec_list = pd.read_csv(sig_elec_file).rename(
-            columns={"electrode": "electrode_name"}
-        )
-        sid_sig_elec_list = pd.merge(
-            df, sig_elec_list, how="inner", on=["subject", "electrode_name"]
-        )
-        assert len(sig_elec_list) == len(sid_sig_elec_list), "Sig Elecs Missing"
-        electrode_info = {
-            (values["subject"], values["electrode_id"]): values["electrode_name"]
-            for _, values in sid_sig_elec_list.iterrows()
-        }
+    if isinstance(item, list):
+        return [clean_lm_model_name(i) for i in item]
 
-    else:  # electrode list for 1 sid
-        assert args.electrodes, "Need electrode list since no sig_elec_list"
-        electrode_info = {
-            (args.sid, key): next(
-                iter(
-                    df.loc[
-                        (df.subject == str(args.sid)) & (df.electrode_id == key),
-                        "electrode_name",
-                    ]
-                ),
-                None,
-            )
-            for key in args.electrodes
-        }
-
-    return electrode_info
+    raise ValueError(f"Invalid input. Please check. item: {item}")
 
 
 def return_stitch_index(args):
@@ -81,12 +76,17 @@ def return_stitch_index(args):
         args ([type]): [description]
 
     Returns:
-        stitch_index: list[int] Describing the convo onset and offsets within the word datum to specify the borders of 
+        stitch_index: list[int] Describes the convo onset and offsets within the word datum to specify the borders of the individual conversations.
+            If required flags aren't provided raise a ValueError.
     """
-    if args.PICKLE_DIR and args.stich_file:
+    if args.PICKLE_DIR and args.stitch_file:
         stitch_file = os.path.join(args.PICKLE_DIR, args.stitch_file)
         return [0] + load_pickle(stitch_file)
-    return None
+    elif args.sid and args.conversation_id:
+        data, _ = load_electrode_data(args, [args.conversation_id], args.sid, 1)
+        return [0, data.size]
+    else:
+        raise ValueError("Need to provide --stitch-file and --pickle-dir or --sid and --conversation-id.")
 
 
 def single_electrode_encoding(electrode, args, datum, stitch_index):
@@ -110,13 +110,13 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
 
     # Load signal Data
     elec_signal, missing_convos = load_electrode_data(
-        args, sid, elec_id, stitch_index, False
+        args, datum.conversation_id.unique(), sid, elec_id, stitch_index, False
     )
 
     # Modify datum based on signal
     if len(missing_convos) > 0:  # signal missing convos
         elec_datum = datum.loc[
-            ~datum["conversation_name"].isin(missing_convos)
+            ~datum["conversation_id"].isin(missing_convos)
         ]  # filter missing convos
     else:
         elec_datum = datum
@@ -226,6 +226,14 @@ def main():
 
     # Read command line arguments
     args = parse_arguments()
+    args.emb_type = clean_lm_model_name(args.emb_type)
+    args.align_with = clean_lm_model_name(args.align_with)
+    args.PICKLE_DIR = None
+    args.emb_df_path = None
+    args.output_dir = os.path.join(os.getcwd(), "results")
+    args.full_output_dir = create_output_directory(args)
+    args.best_lag = -1
+    args.electrodes = [i + 1 for i in range(64)]
 
     # Setup paths to data
     args = setup_environ(args)
@@ -235,10 +243,11 @@ def main():
 
     # Locate and read datum
     stitch_index = return_stitch_index(args)
-    datum = read_datum(args)
+    datum = read_datum(args, stitch_index)
 
     # Processing significant electrodes or individual subjects
-    electrode_info = process_subjects(args)
+    # electrode_info = process_subjects(args)
+    electrode_info = {(args.sid, x): str(x) for x in args.electrodes}
     parallel_encoding(args, electrode_info, datum, stitch_index)
 
     return

@@ -1,3 +1,4 @@
+from ast import literal_eval
 import os
 import string
 
@@ -180,60 +181,60 @@ def mod_datum_by_preds(args, datum, emb_type):
     Returns:
         DataFrame: further filtered datum
     """
-    if emb_type in args.emb_df_path:  # current datum has the correct emb_type
-        pass
-    else:  # current datum does not have the correct emb_type, need to load a second datum
-        # load second datum
-        if emb_type == "gpt2-xl":
-            second_base_df_path = os.path.join(
-                args.PICKLE_DIR, "embeddings", "gpt2-xl", "full", "base_df.pkl"
-            )
-            second_emb_df_path = os.path.join(
-                args.PICKLE_DIR,
-                "embeddings",
-                "gpt2-xl",
-                "full",
-                "cnxt_1024",
-                "layer_48.pkl",
-            )
-        else:
-            raise Exception("Not implemented")  # TODO
+    # if emb_type in args.emb_df_path:  # current datum has the correct emb_type
+    #     pass
+    # else:  # current datum does not have the correct emb_type, need to load a second datum
+    #     # load second datum
+    #     if emb_type == "gpt2-xl":
+    #         second_base_df_path = os.path.join(
+    #             args.PICKLE_DIR, "embeddings", "gpt2-xl", "full", "base_df.pkl"
+    #         )
+    #         second_emb_df_path = os.path.join(
+    #             args.PICKLE_DIR,
+    #             "embeddings",
+    #             "gpt2-xl",
+    #             "full",
+    #             "cnxt_1024",
+    #             "layer_48.pkl",
+    #         )
+    #     else:
+    #         raise Exception("Not implemented")  # TODO
 
-        second_base_df = load_datum(second_base_df_path)
-        second_emb_df = load_datum(second_emb_df_path)
+    #     second_base_df = load_datum(second_base_df_path)
+    #     second_emb_df = load_datum(second_emb_df_path)
 
-        second_datum = pd.merge(
-            second_base_df, second_emb_df, left_index=True, right_index=True
-        )
-        # second_base_df.reset_index(
-        #     drop=True, inplace=True
-        # )  # so concatenate can be aligned correctly
-        # second_datum = pd.concat([second_base_df, second_emb_df], axis=1)
-        if args.emb_type == "glove50":
-            second_datum = second_datum[
-                second_datum["gpt2-xl_token_is_root"] & second_datum["in_glove50"]
-            ]
-        second_datum = second_datum.loc[
-            :,
-            [
-                "adjusted_onset",
-                "word",
-                "top1_pred",
-                "top1_pred_prob",
-                "true_pred_prob",
-                "true_pred_rank",
-            ],
-        ]
+    #     second_datum = pd.merge(
+    #         second_base_df, second_emb_df, left_index=True, right_index=True
+    #     )
+    #     # second_base_df.reset_index(
+    #     #     drop=True, inplace=True
+    #     # )  # so concatenate can be aligned correctly
+    #     # second_datum = pd.concat([second_base_df, second_emb_df], axis=1)
+    #     if args.emb_type == "glove50":
+    #         second_datum = second_datum[
+    #             second_datum["gpt2-xl_token_is_root"] & second_datum["in_glove50"]
+    #         ]
+    #     second_datum = second_datum.loc[
+    #         :,
+    #         [
+    #             "adjusted_onset",
+    #             "word",
+    #             "top1_pred",
+    #             "top1_pred_prob",
+    #             "true_pred_prob",
+    #             "true_pred_rank",
+    #         ],
+    #     ]
 
-        # merge second datum prediction columns to datum
-        datum = datum.drop(
-            ["top1_pred", "top1_pred_prob", "true_pred_prob", "true_pred_rank"],
-            axis=1,
-            errors="ignore",
-        )  # delete the current top predictions if any
-        datum = datum[datum.adjusted_onset.notna()]
-        second_datum = second_datum[second_datum.adjusted_onset.notna()]
-        datum = datum.merge(second_datum, how="inner", on=["adjusted_onset", "word"])
+    #     # merge second datum prediction columns to datum
+    #     datum = datum.drop(
+    #         ["top1_pred", "top1_pred_prob", "true_pred_prob", "true_pred_rank"],
+    #         axis=1,
+    #         errors="ignore",
+    #     )  # delete the current top predictions if any
+    #     datum = datum[datum.adjusted_onset.notna()]
+    #     second_datum = second_datum[second_datum.adjusted_onset.notna()]
+    #     datum = datum.merge(second_datum, how="inner", on=["adjusted_onset", "word"])
     print(f"Using {emb_type} predictions")
 
     # modify datum based on correct or incorrect predictions
@@ -529,7 +530,7 @@ def mod_datum(args, datum):
     return datum
 
 
-def read_datum(args, stitch=None):
+def read_datum(args, stitch):
     """Load, process, and filter datum
 
     Args:
@@ -539,14 +540,27 @@ def read_datum(args, stitch=None):
     Returns:
         DataFrame: processed and filtered datum
     """
-    if args.emb_df_path:
-        emb_df = load_datum(args.emb_df_path)
+    emb_df = None
+    base_df = None
+    def _convert_embeddings(embedding_str: str):
+        # Embeddings are read as string and need to be converted to a numpy array. Catch nan case.
+        if "nan" in embedding_str:
+            return [np.nan]
+        return np.array(literal_eval(embedding_str), dtype=float)
+    # if args.emb_df_path:
+    #     emb_df = load_datum(args.emb_df_path)
     if args.base_df_path:
-        base_df = load_datum(args.base_df_path)
+        with open(args.base_df_path, "rb"):
+            # base_df = load_datum(args.base_df_path)
+            base_df = pd.read_csv(args.base_df_path, converters={"embeddings": _convert_embeddings})
 
-    df = pd.merge(
-        base_df, emb_df, left_index=True, right_index=True
-    )  # TODO Needs testing (either bert_utterance or whisper)
+    if emb_df and base_df:
+        df = pd.merge(
+            base_df, emb_df, left_index=True, right_index=True
+        )  # TODO Needs testing (either bert_utterance or whisper)
+    else:
+        # Set to whatever is available.
+        df = emb_df if emb_df else base_df
     print(f"After loading: Datum loads with {len(df)} words")
 
     df = process_datum(args, df, stitch)
