@@ -73,16 +73,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         # Extract frequency bands
         band_raws = []
 
-        bands = {
-            "alpha": (8, 13),
-            "beta": (13, 30),
-            "theta": (4, 8),
-            "gamma": (30, 55),
-            "highgamma": (70, 200),
-        }
-
         iir_params = dict(order=4, ftype="butter")
-        for band, freqs in bands.items():
+        for freqs in self.bands:
             band_raw = sample.copy()
             band_raw = band_raw.filter(
                 *freqs, picks="data", method="iir", iir_params=iir_params, verbose=False
