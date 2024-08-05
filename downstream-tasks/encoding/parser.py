@@ -41,6 +41,7 @@ def parse_arguments():
     parser.add_argument("--fold-num", nargs="?", type=int, default=10)
     parser.add_argument("--exclude-nonwords", action="store_true")
     parser.add_argument("--job-id", type=int, default=0)
+    parser.add_argument("--base-df-path", type=str)
 
     parser.add_argument("--pca-to", nargs="?", type=int, default=0)
 
@@ -53,6 +54,13 @@ def parse_arguments():
     parser.add_argument("--model-mod", nargs="?", type=str, default=None)
 
     parser.add_argument("--bad-convos", nargs="*", type=int, default=[])
+
+    parser.add_argument(
+        "--electrode-data-path",
+        type=str,
+        default="preprocessed-highgamma/NY{sid}_*_Part*_conversation{convo_id}_electrode_preprocess_file_{elec_id}.mat",
+        help="The glob path to access electrode data. Should include placeholders for subject id \{sid\}, electrode_id \{elec_id\}, and conversation_id \{convo_id\}. See default for sample value.",
+    )
 
     # If running the code in debug mode
     gettrace = getattr(sys, "gettrace", None)

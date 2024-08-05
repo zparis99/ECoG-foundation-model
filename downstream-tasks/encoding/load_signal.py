@@ -65,11 +65,12 @@ def create_nan_signal(stitch, convo_id):
     return mat_signal
 
 
-def load_electrode_data(args, sid, elec_id, stitch, z_score=False):
+def load_electrode_data(args, conversation_ids: list[int], sid: int, elec_id, stitch=None, z_score=False):
     """Load and concat signal mat files for a specific electrode
 
     Args:
         args (namespace): commandline arguments
+        conversation_ids: list of conversation ids to load data for
         elec_id: electrode id
         stitch: stitch_index
         z_score: whether we z-score the signal per conversation
@@ -79,31 +80,14 @@ def load_electrode_data(args, sid, elec_id, stitch, z_score=False):
         elec_datum: modified datum based on the electrode signal
     """
 
-    if args.project_id == "tfs":
-        DATA_DIR = "/projects/HASSON/247/data/conversations-car"
-        process_flag = "preprocessed"
-        if args.sid == 7170:
-            process_flag = "preprocessed_v2"  # second version of 7170
-        if args.sid == 798:
-            process_flag = 'preprocessed_allElec'
-    elif args.project_id == "podcast":
-        DATA_DIR = "/projects/HASSON/247/data/podcast-data"
-        process_flag = "preprocessed_all"
-    else:
-        raise Exception("Invalid Project ID")
-
-    convos = sorted(
-        glob.glob(os.path.join(DATA_DIR, str(sid), "NY*Part*conversation*"))
-    )
-
     all_signal = []
     missing_convos = []
-    for convo_id, convo in enumerate(convos, 1):
+    for convo_id in conversation_ids:
         if args.conversation_id != 0 and convo_id != args.conversation_id:
             continue
 
         file = glob.glob(
-            os.path.join(convo, process_flag, "*_" + str(elec_id) + ".mat")
+            args.electrode_data_path.format(convo_id=convo_id, sid=sid, elec_id=elec_id)
         )
 
         if len(file) == 1:  # conversation file exists
@@ -120,16 +104,18 @@ def load_electrode_data(args, sid, elec_id, stitch, z_score=False):
                 mat_signal = stats.zscore(mat_signal)
 
         elif len(file) == 0:  # conversation file does not exist
+            if not stitch:
+                raise ValueError(f"Electrode file does not exist for sid: {sid} and conversation id: {convo_id} and stitch not provided to create nan signal.")
             # if args.sid != 7170:
             #     raise SystemExit(
             #         f"Error: Conversation file does not exist for electrode {elec_id} at {convo}"
             #     )
-            missing_convos.append(os.path.basename(convo))  # append missing convo name
+            missing_convos.append(convo_id)  # append missing convo name
             mat_signal = create_nan_signal(stitch, convo_id)
 
         else:  # more than 1 conversation files
             raise SystemExit(
-                f"Error: More than 1 signal file exists for electrode {elec_id} at {convo}"
+                f"Error: More than 1 signal file exists for electrode {elec_id} at {args.electrode_data_path}"
             )
 
         all_signal.append(mat_signal)  # append conversation signal
