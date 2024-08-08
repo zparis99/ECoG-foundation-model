@@ -4,10 +4,10 @@
 USR := $(shell whoami | head -c 2)
 DT := $(shell date +"%Y%m%d")
 
-ACCESS_TOKEN = "your hf access token"
+ACCESS_TOKEN = "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"
 
 download-data:
-	$ python ECoG-MAE/download_data.py \
+	$ python ECoG_MAE/download_data.py \
 		--access-token $(ACCESS_TOKEN)
 
 PREFIX = test-new
@@ -50,7 +50,7 @@ CMD = sbatch --job-name=$(JOB_NAME) submit.sh
 
 model-train:
 	mkdir -p logs
-	$(CMD) ECoG-MAE/main.py \
+	$(CMD) ECoG_MAE/main.py \
 		--job-name $(JOB_NAME) \
 		--data-size $(DATA_SIZE) \
 		--batch-size $(BATCH_SIZE) \

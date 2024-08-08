@@ -104,8 +104,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         # zero pad if signal chunk is shorter than 2 seconds
         # this will happen if the whole chunk is not divisible by 2
-        for i in range(0, 5):
-
+        for i in range(0, len(self.bands)):
             if len(band_raws[i].get_data(picks=grid)[1]) < n_samples:
                 unpadded_sig = band_raws[i].get_data(
                     picks=grid,
@@ -126,7 +125,9 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             # first we check whether the channel is included
             if np.isin(chn, raw.info.ch_names) == False:
                 # if not we insert 0 padding and shift upwards
-                sig = np.insert(sig, i, np.zeros((5, 1, n_samples)), axis=1)
+                sig = np.insert(
+                    sig, i, np.zeros((len(self.bands), 1, n_samples)), axis=1
+                )
 
         # delete items that were shifted upwards
         sig = sig[:, :64, :]
