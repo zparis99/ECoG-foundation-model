@@ -36,6 +36,7 @@ Deprecated==1.2.14
 distlib==0.3.8
 docker-pycreds==0.4.0
 docutils==0.16
+edfio==0.4.3
 einops==0.7.0
 entrypoints==0.4
 executing==2.0.1
@@ -148,6 +149,7 @@ pyEDFlib==0.1.37
 Pygments==2.17.2
 pynvml==11.5.0
 pyparsing==3.1.1
+pytest==8.3.2
 python-dateutil==2.8.2
 python-json-logger==2.0.7
 pytz==2024.1
