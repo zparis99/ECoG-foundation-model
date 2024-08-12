@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 # Config classes here are very roughly following the format of Tensorflow Model Garden: https://www.tensorflow.org/guide/model_garden#training_framework
@@ -31,6 +32,8 @@ class ECoGDataConfig:
     shuffle: bool = False
     # If True then uses a mock data loader.
     test_loader: bool = False
+    # The maximum number of samples to allow. Optional, if not set then will be read from edf file header.
+    max_samples: Optional[int] = None
 
 
 @dataclass
