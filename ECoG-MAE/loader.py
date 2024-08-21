@@ -66,6 +66,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         sample.load_data(verbose=False)
 
+        # z-score signal
         def func(input, ch_idx):
 
             output = input - self.means[ch_idx] / self.stds[ch_idx]
@@ -74,11 +75,12 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         if self.config.norm == "hour":
 
+            # z-score signal for each channel separately
             for i in range(0, 64):
-
                 raw.apply_function(func, picks=[i], channel_wise=True, ch_idx=i)
 
         # Extract frequency bands
+        # we are saving the filtered signal for each band as a separate raw object
         band_raws = []
 
         bands = {
@@ -100,6 +102,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         sig = np.zeros((len(self.bands), 64, n_samples))
 
+        # zero pad if signal chunk is shorter than 2 seconds
+        # this will happen if the whole chunk is not divisible by 2
         for i in range(0, 5):
 
             if len(band_raws[i].get_data(picks=grid)[1]) < n_samples:
