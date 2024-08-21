@@ -55,7 +55,15 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         raw = read_raw(self.path)
 
         # crop 2 sec sample segment
-        sample = raw.crop(self.index * 2, (self.index + 1) * 2, include_tmax=False)
+        if self.index + 1 < self.max_samples:
+            sample = raw.crop(
+                self.index * self.sample_secs,
+                (self.index + 1) * self.sample_secs,
+                include_tmax=False,
+            )
+        else:
+            sample = raw.crop(self.index * self.sample_secs, None, include_tmax=False)
+
         sample.load_data(verbose=False)
 
         def func(input, ch_idx):
@@ -95,8 +103,11 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         for i in range(0, 5):
 
             if len(band_raws[i].get_data(picks=grid)[1]) < n_samples:
-                padding = np.zeros((64, n_samples - len(sig[0])))
-                sig = np.concatenate((sig, padding), axis=1)
+                unpadded_sig = band_raws[i].get_data(
+                    picks=grid,
+                )
+                padding = np.zeros((64, n_samples - len(unpadded_sig[1])))
+                sig[i, :, :] = np.concatenate((unpadded_sig, padding), axis=1)
             else:
                 sig[i, :, :] = band_raws[i].get_data(
                     picks=grid,

@@ -10,9 +10,9 @@ download-data:
 	$ python ECoG-MAE/download_data.py \
 		--access-token $(ACCESS_TOKEN)
 
-PREFIX = test-short-run
-NORM = None
-DATA_SIZE = 0.025
+PREFIX = test-new
+NORM = hour
+DATA_SIZE = 0.25
 BATCH_SIZE = 64
 NEW_FS = 20
 SAMPLE_LENGTH = 2
@@ -35,9 +35,9 @@ DATASET_PATH = dataset_full
 TRAIN_DATA_PROPORTION = 0.9
 JOB_NAME = "$(USR)-$(DT)-$(PREFIX)-ds-$(DATA_SIZE)-bs-$(BATCH_SIZE)-norm-$(NORM)-fs-$(NEW_FS)-sl-$(SAMPLE_LENGTH)-ps-$(PATCH_SIZE)-fps-$(FRAME_PATCH_SIZE)-tmr-$(TUBE_MASK_RATIO)-dmr-$(DECODER_MASK_RATIO)-b-$(BANDS_STR)-ep-$(NUM_EPOCHS)-loss-$(LOSS)-lr-$(LEARNING_RATE)-dim-$(DIM)"
 
-# CMD = sbatch --job-name=$(JOB_NAME) submit.sh
+CMD = sbatch --job-name=$(JOB_NAME) submit.sh
 # to debug, request interactive gpu node via salloc and select this option:
-CMD = python
+# CMD = python
 
 # for commands debug, use-contrastive-loss, use-cls-token: add to arguments = True, leave out = False
 # --debug -> just enables verbose print out for debugging
