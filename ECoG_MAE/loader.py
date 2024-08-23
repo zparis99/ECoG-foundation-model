@@ -33,23 +33,29 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         if config.norm == "hour":
             self.means, self.stds = get_signal_stats(self.path)
         self.index = 0
+        self.signal = self._load_grid_data()
 
     def __iter__(self):
+        print("Iter")
         # this is to make sure we stop streaming from our dataset after the max number of samples is reached
         while self.index < self.max_samples:
             yield self.sample_data()
             self.index += 1
+            print(self.index)
         # this is to reset the counter after we looped through the dataset so that streaming starts at 0 in the next epoch, since the dataset is not initialized again
-        if self.index == self.max_samples:
+        if self.index >= self.max_samples:
+            print("Reset!")
             self.index = 0
+            print(self.index)
 
     def sample_data(self) -> np.array:
 
         start = t.time()
         
-        sig = self._load_grid_data(self.index)
+        start_sample = self.index * self.sample_secs * self.fs
+        end_sample = (self.index + 1) * self.sample_secs * self.fs
+        current_sample = self.signal[:, start_sample:end_sample]
         
-        n_samples = int(self.sample_secs * self.fs)
         def norm(input, ch_idx):
             output = input - self.means[ch_idx] / self.stds[ch_idx]
 
@@ -59,14 +65,14 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
             # z-score signal for each channel separately
             for i in range(0, 64):
-                sig[i, :] = norm(sig[i], i)
+                current_sample[i, :] = norm(current_sample[i], i)
 
         # Extract frequency bands
-        filtered_signal = np.zeros((len(self.bands), 64, n_samples))
+        filtered_signal = np.zeros((len(self.bands), 64, current_sample.shape[1]))
         
         for i, freqs in enumerate(self.bands):
             sos = scipy.signal.butter(4, freqs, btype="bandpass", analog=False, output="sos", fs=self.fs)
-            filtered_signal[i] = scipy.signal.sosfiltfilt(sos, sig)
+            filtered_signal[i] = scipy.signal.sosfiltfilt(sos, current_sample)
             filtered_signal[i] = np.abs(scipy.signal.hilbert(filtered_signal[i]))
         
         resampled = resample_mean_signals(filtered_signal, self.fs, self.new_fs)
@@ -76,18 +82,24 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         # d = depth (currently 1)
         # h = height of grid (currently 8)
         # w = width of grid (currently 8)
-        out = rearrange(
+        preprocessed_signal = rearrange(
             np.array(resampled, dtype=np.float32), "c (h w) t -> c t () h w", h=8, w=8
         )
+        
+        # Zero-pad if sample is too short.
+        expected_sample_length = self.sample_secs * self.new_fs
+        if preprocessed_signal.shape[1] < expected_sample_length:
+            padding = np.zeros((len(self.bands), expected_sample_length - preprocessed_signal.shape[1], 1, 8, 8))
+            preprocessed_signal = np.concatenate((preprocessed_signal, padding), axis=1)
 
         end = t.time()
 
         # print('Time elapsed: ' + str(end-start))
 
-        return out
+        return preprocessed_signal
+
     
-    
-    def _load_grid_data(self, index):
+    def _load_grid_data(self):
         """Overridable function to load data from an mne file and return it in an unprocessed grid.
         
         Can be overridden to support different data types. Data will be preprocessed in the same way and returned via iteration over the dataset.
@@ -97,10 +109,6 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         """
         
         # load edf and extract signal
-        # TODO: Make this not read from file every iteration. I/O could limit training speed here. 
-        # Also maybe don't need to filter on every iteration.
-        # Could instead filter over all signal data at start and then crop out from that later. Test this empirically to see speed differences in training.
-        # For now just use existing
         raw = read_raw(self.path)
         
         # here we define the grid - since for patient 798 grid electrodes are G1 - G64
@@ -110,20 +118,10 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             if np.isin(channel, raw.info.ch_names):
                 grid_ch_names.append(channel)
         
-        n_samples = int(self.sample_secs * self.fs)
-        sig = np.zeros((64, n_samples))
-        
-        # crop 2 sec sample segment.
-        sample = raw.crop(index * self.sample_secs, (index + 1) * self.sample_secs, include_tmax=False)
-        sample.load_data(verbose=False)
-        
-        if len(sample.get_data(picks=grid_ch_names)[1]) < n_samples:
-            padding = np.zeros((64, n_samples - len(sig[0])))
-            sig = np.concatenate((sig, padding), axis=1)
-        else:
-            sig = sample.get_data(
+        sig = raw.get_data(
                 picks=grid_ch_names,
             )
+        n_samples = sig.shape[1]
         
         # zero pad if channel is not included in grid #TODO a bit clunky right now, implement in a better and more flexible way
         # since we will load by index position of channel (so if a channel is not included it will load channel n+1 at position 1),

@@ -88,18 +88,12 @@ def test_data_loader_grid_creation_returns_input_data(data_loader_creation_fn):
     index = 0
     fake_data = create_fake_sin_data()
 
-    while index < data_loader.max_samples:
-        assert np.allclose(
-            data_loader._load_grid_data(index),
-            fake_data[
-                :64,
-                (config.sample_length * index * FILE_SAMPLING_FREQUENCY) : (
-                    (index + 1) * config.sample_length * FILE_SAMPLING_FREQUENCY
-                ),
-            ],
-        )
-
-        index += 1
+    assert np.allclose(
+        data_loader._load_grid_data(),
+        fake_data[
+            :64, :
+        ],
+    )
 
 
 def test_data_loader_can_handle_missing_channel(data_loader_creation_fn):
@@ -112,45 +106,45 @@ def test_data_loader_can_handle_missing_channel(data_loader_creation_fn):
     fake_data = np.ones((len(ch_names), 100 * FILE_SAMPLING_FREQUENCY))
     data_loader = data_loader_creation_fn(config, ch_names, fake_data)
 
-    # Iterate through all possible data.
-    index = 0
-
-    while index < data_loader.max_samples:
-        actual_data = data_loader._load_grid_data(index)
-        assert np.allclose(actual_data[0], np.zeros(config.sample_length * FILE_SAMPLING_FREQUENCY))
-        assert np.allclose(
-            actual_data[1:],
-            np.ones((63, config.sample_length * FILE_SAMPLING_FREQUENCY)),
-        )
-
-        index += 1
+    actual_data = data_loader._load_grid_data()
+    assert np.allclose(actual_data[0], np.zeros(100 * FILE_SAMPLING_FREQUENCY))
+    assert np.allclose(
+        actual_data[1:],
+        np.ones((63, 100 * FILE_SAMPLING_FREQUENCY)),
+    )
         
 
-# def test_data_loader_can_handle_durations_not_divisible_by_sample_length(data_loader_creation_fn):
-#     config = ECoGDataConfig(
-#         batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, max_samples=10.498, sample_length=1
-#     )
-#     # Create data for 10.5 seconds.
-#     fake_data = np.ones((65, int(10.5 * FILE_SAMPLING_FREQUENCY)))
-#     data_loader = data_loader_creation_fn(config, data=fake_data)
+def test_data_loader_can_handle_durations_not_divisible_by_sample_length(data_loader_creation_fn):
+    config = ECoGDataConfig(
+        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, max_samples=10.498, sample_length=1
+    )
+    # Create data for 10.5 seconds.
+    fake_data = np.ones((65, int(10.5 * FILE_SAMPLING_FREQUENCY)))
+    data_loader = data_loader_creation_fn(config, data=fake_data)
 
-#     index = 0
+    for actual_data in data_loader:
+        pass
+    # Last sample should have 0's padded in.
+    padding = np.zeros((len(config.bands), int(0.5 * config.new_fs), 1, 8, 8))
+    assert np.allclose(
+        actual_data[:, int(0.5 * config.new_fs):, :, :, :],
+        padding,
+    )
 
-#     while index < data_loader.max_samples:
-#         # Data should be ones for all samples except for the last one which should have 0's padded in.
-#         actual_data = data_loader._load_grid_data(index)
-#         if index == 10:
-#             last_signal = np.ones((64, int(0.5 * FILE_SAMPLING_FREQUENCY)))
-#             padding = np.zeros((64, int(0.5 * FILE_SAMPLING_FREQUENCY)))
-#             expected_data = np.hstack([last_signal, padding])
-#             assert np.allclose(
-#                 actual_data,
-#                 expected_data,
-#             )
-#         else:
-#             assert np.allclose(
-#                 actual_data,
-#                 np.ones((64, config.sample_length * FILE_SAMPLING_FREQUENCY)),
-#             )
-
-#         index += 1
+def test_data_loader_resets_from_beginning_of_dataset(data_loader_creation_fn):
+    config = ECoGDataConfig(
+        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, max_samples=10.498, sample_length=1
+    )
+    # Make sure we can iterate through data twice and it returns the same data each time.
+    data_loader = data_loader_creation_fn(config)
+    
+    data_first_pass = []
+    for first_pass_data in data_loader:
+        data_first_pass.append(first_pass_data)
+    
+    i = 0
+    for i, second_pass_data in enumerate(data_loader):
+        assert np.all(second_pass_data == data_first_pass[i])
+        
+    # Make sure it actually iterated a second time.
+    assert i > 0

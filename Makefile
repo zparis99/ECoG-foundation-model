@@ -4,7 +4,7 @@
 USR := $(shell whoami | head -c 2)
 DT := $(shell date +"%Y%m%d")
 
-ACCESS_TOKEN = "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"
+ACCESS_TOKEN = "your hf access token"
 
 download-data:
 	$ python ECoG_MAE/download_data.py \
