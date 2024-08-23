@@ -11,8 +11,9 @@ from pyedflib import highlevel
 import scipy.signal
 from einops import rearrange
 import torch
-from config import ECoGDataConfig, VideoMAEExperimentConfig
 
+from config import ECoGDataConfig, VideoMAEExperimentConfig
+from utils import resample_mean_signals
 
 class ECoGDataset(torch.utils.data.IterableDataset):
 
@@ -49,7 +50,6 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         sig = self._load_grid_data(self.index)
         
         n_samples = int(self.sample_secs * self.fs)
-        n_new_samples = int(self.sample_secs * self.new_fs)
         def norm(input, ch_idx):
             output = input - self.means[ch_idx] / self.stds[ch_idx]
 
@@ -63,18 +63,13 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         # Extract frequency bands
         filtered_signal = np.zeros((len(self.bands), 64, n_samples))
-
-        # iir_params = dict(order=4, ftype="butter")
+        
         for i, freqs in enumerate(self.bands):
-            sos = scipy.signal.butter(4, freqs, btype="bandpass", output="sos", fs=self.fs)
-            filtered_signal[i] = scipy.signal.sosfilt(sos, sig)
-            # band_raw = band_raw.filter(
-            #     *freqs, picks="data", method="iir", iir_params=iir_params, verbose=False
-            # )
-            # band_raw = band_raw.apply_hilbert(envelope=True, verbose=False)
-            filtered_signal[i] = scipy.signal.hilbert(filtered_signal[i])
-
-        resampled = scipy.signal.resample(filtered_signal, n_new_samples, axis=2)
+            sos = scipy.signal.butter(4, freqs, btype="bandpass", analog=False, output="sos", fs=self.fs)
+            filtered_signal[i] = scipy.signal.sosfiltfilt(sos, sig)
+            filtered_signal[i] = np.abs(scipy.signal.hilbert(filtered_signal[i]))
+        
+        resampled = resample_mean_signals(filtered_signal, self.fs, self.new_fs)
         # rearrange into shape c*t*d*h*w, where
         # c = freq bands,
         # t = number of datapoints within a sample

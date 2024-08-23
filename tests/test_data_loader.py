@@ -67,7 +67,7 @@ def test_data_loader_can_handle_configurable_bands(data_loader_creation_fn):
         batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, max_samples=10
     )
     data_loader = data_loader_creation_fn(config)
-
+        
     for data in data_loader:
         assert data.shape == (
             len(config.bands),
