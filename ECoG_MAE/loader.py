@@ -11,8 +11,9 @@ from pyedflib import highlevel
 import scipy.signal
 from einops import rearrange
 import torch
-from config import ECoGDataConfig, VideoMAEExperimentConfig
 
+from config import ECoGDataConfig, VideoMAEExperimentConfig
+from utils import resample_mean_signals
 
 class ECoGDataset(torch.utils.data.IterableDataset):
 
@@ -23,52 +24,39 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.fs = fs
         self.new_fs = config.new_fs
         self.sample_secs = config.sample_length
-        # since we take sample_length sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by sample_length
-        self.max_samples = (
+        # since we take sample_length sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by sample_length.
+        # Optionally can configure max_samples directly as well.
+        self.max_samples = config.max_samples if config.max_samples else (
             highlevel.read_edf_header(edf_file=self.path)["Duration"]
             / config.sample_length
         )
         if config.norm == "hour":
             self.means, self.stds = get_signal_stats(self.path)
         self.index = 0
+        self.signal = self._load_grid_data()
 
     def __iter__(self):
+        print("Iter")
         # this is to make sure we stop streaming from our dataset after the max number of samples is reached
         while self.index < self.max_samples:
             yield self.sample_data()
             self.index += 1
+            print(self.index)
         # this is to reset the counter after we looped through the dataset so that streaming starts at 0 in the next epoch, since the dataset is not initialized again
-        if self.index == self.max_samples:
+        if self.index >= self.max_samples:
+            print("Reset!")
             self.index = 0
+            print(self.index)
 
     def sample_data(self) -> np.array:
 
         start = t.time()
-
-        # here we define the grid - since for patient 798 grid electrodes are G1 - G64
-        grid = np.linspace(1, 64, 64).astype(int)
-
-        n_samples = int(self.sample_secs * self.fs)
-        n_new_samples = int(self.sample_secs * self.new_fs)
-
-        # load edf and extract signal
-        raw = read_raw(self.path)
-
-        # crop 2 sec sample segment
-        if self.index + 1 < self.max_samples:
-            sample = raw.crop(
-                self.index * self.sample_secs,
-                (self.index + 1) * self.sample_secs,
-                include_tmax=False,
-            )
-        else:
-            sample = raw.crop(self.index * self.sample_secs, None, include_tmax=False)
-
-        sample.load_data(verbose=False)
-
-        # z-score signal
-        def func(input, ch_idx):
-
+        
+        start_sample = self.index * self.sample_secs * self.fs
+        end_sample = (self.index + 1) * self.sample_secs * self.fs
+        current_sample = self.signal[:, start_sample:end_sample]
+        
+        def norm(input, ch_idx):
             output = input - self.means[ch_idx] / self.stds[ch_idx]
 
             return output
@@ -77,77 +65,80 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
             # z-score signal for each channel separately
             for i in range(0, 64):
-                raw.apply_function(func, picks=[i], channel_wise=True, ch_idx=i)
+                current_sample[i, :] = norm(current_sample[i], i)
 
         # Extract frequency bands
-        # we are saving the filtered signal for each band as a separate raw object
-        band_raws = []
-
-        bands = {
-            "alpha": (8, 13),
-            "beta": (13, 30),
-            "theta": (4, 8),
-            "gamma": (30, 55),
-            "highgamma": (70, 200),
-        }
-
-        iir_params = dict(order=4, ftype="butter")
-        for band, freqs in bands.items():
-            band_raw = sample.copy()
-            band_raw = band_raw.filter(
-                *freqs, picks="data", method="iir", iir_params=iir_params, verbose=False
-            )
-            band_raw = band_raw.apply_hilbert(envelope=True, verbose=False)
-            band_raws.append(band_raw)
-
-        sig = np.zeros((len(self.bands), 64, n_samples))
-
-        # zero pad if signal chunk is shorter than 2 seconds
-        # this will happen if the whole chunk is not divisible by 2
-        for i in range(0, 5):
-
-            if len(band_raws[i].get_data(picks=grid)[1]) < n_samples:
-                unpadded_sig = band_raws[i].get_data(
-                    picks=grid,
-                )
-                padding = np.zeros((64, n_samples - len(unpadded_sig[1])))
-                sig[i, :, :] = np.concatenate((unpadded_sig, padding), axis=1)
-            else:
-                sig[i, :, :] = band_raws[i].get_data(
-                    picks=grid,
-                )
-
-        # zero pad if channel is not included in grid #TODO a bit clunky right now, implement in a better and more flexible way
-        # since we will load by index position of channel (so if a channel is not included it will load channel n+1 at position 1),
-        # we correct that by inserting 0 at position n and shift value one upwards
-        for i in range(0, 64):
-            chn = "G" + str(i + 1)
-
-            # first we check whether the channel is included
-            if np.isin(chn, raw.info.ch_names) == False:
-                # if not we insert 0 padding and shift upwards
-                sig = np.insert(sig, i, np.zeros((5, 1, n_samples)), axis=1)
-
-        # delete items that were shifted upwards
-        sig = sig[:, :64, :]
-
-        resampled = scipy.signal.resample(sig, n_new_samples, axis=2)
-
+        filtered_signal = np.zeros((len(self.bands), 64, current_sample.shape[1]))
+        
+        for i, freqs in enumerate(self.bands):
+            sos = scipy.signal.butter(4, freqs, btype="bandpass", analog=False, output="sos", fs=self.fs)
+            filtered_signal[i] = scipy.signal.sosfiltfilt(sos, current_sample)
+            filtered_signal[i] = np.abs(scipy.signal.hilbert(filtered_signal[i]))
+        
+        resampled = resample_mean_signals(filtered_signal, self.fs, self.new_fs)
         # rearrange into shape c*t*d*h*w, where
         # c = freq bands,
         # t = number of datapoints within a sample
         # d = depth (currently 1)
         # h = height of grid (currently 8)
         # w = width of grid (currently 8)
-        out = rearrange(
+        preprocessed_signal = rearrange(
             np.array(resampled, dtype=np.float32), "c (h w) t -> c t () h w", h=8, w=8
         )
+        
+        # Zero-pad if sample is too short.
+        expected_sample_length = self.sample_secs * self.new_fs
+        if preprocessed_signal.shape[1] < expected_sample_length:
+            padding = np.zeros((len(self.bands), expected_sample_length - preprocessed_signal.shape[1], 1, 8, 8))
+            preprocessed_signal = np.concatenate((preprocessed_signal, padding), axis=1)
 
         end = t.time()
 
         # print('Time elapsed: ' + str(end-start))
 
-        return out
+        return preprocessed_signal
+
+    
+    def _load_grid_data(self):
+        """Overridable function to load data from an mne file and return it in an unprocessed grid.
+        
+        Can be overridden to support different data types. Data will be preprocessed in the same way and returned via iteration over the dataset.
+        
+        Returns:
+            numpy array of shape [number of electrodes, num_samples].
+        """
+        
+        # load edf and extract signal
+        raw = read_raw(self.path)
+        
+        # here we define the grid - since for patient 798 grid electrodes are G1 - G64
+        grid_ch_names = []
+        for i in range(64):
+            channel = "G" + str(i + 1)
+            if np.isin(channel, raw.info.ch_names):
+                grid_ch_names.append(channel)
+        
+        sig = raw.get_data(
+                picks=grid_ch_names,
+            )
+        n_samples = sig.shape[1]
+        
+        # zero pad if channel is not included in grid #TODO a bit clunky right now, implement in a better and more flexible way
+        # since we will load by index position of channel (so if a channel is not included it will load channel n+1 at position 1),
+        # we correct that by inserting 0 at position n and shift value one upwards
+        for i in range(64):
+            channel = "G" + str(i + 1)
+            # first we check whether the channel is included
+            if not np.isin(channel, raw.info.ch_names):
+                # if not we insert 0 padding and shift upwards
+                sig = np.insert(
+                    sig, i, np.zeros((n_samples)), axis=0
+                )
+                
+        # delete items that were shifted upwards
+        sig = sig[:64, :]
+                
+        return sig
 
 
 def get_signal_stats(path):
