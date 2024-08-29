@@ -144,6 +144,18 @@ def resample_mean_signals(signal: np.array, old_fs: int, new_fs: int) -> np.arra
     return resampled_signal
 
 
+def get_signal_stats(signal: np.array) -> tuple[np.array, np.array]:
+    """Generate means and standard deviations for all electrodes in signal.
+
+    Args:
+        signal (np.array): Shape [num_electrodes, num_samples].
+
+    Returns:
+        tuple[np.array, np.array]: (means, stds) each array has shape [num_electrodes].
+    """
+    return np.mean(signal, axis=1), np.std(signal, axis=1)
+
+
 def count_params(model):
     total = sum(p.numel() for p in model.parameters())
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)

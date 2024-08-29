@@ -13,7 +13,7 @@ from einops import rearrange
 import torch
 
 from config import ECoGDataConfig, VideoMAEExperimentConfig
-from utils import preprocess_neural_data
+from utils import preprocess_neural_data, get_signal_stats
 
 
 class ECoGDataset(torch.utils.data.IterableDataset):
@@ -31,7 +31,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         # Optionally can configure max_samples directly as well.
         self.max_samples = self.signal.shape[1] / self.fs / config.sample_length
         if config.norm == "hour":
-            self.means, self.stds = get_signal_stats(self.path)
+            self.means, self.stds = get_signal_stats(self.signal)
         else:
             self.means = None
             self.stds = None
@@ -110,22 +110,6 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         sig = sig[:64, :]
 
         return sig
-
-
-def get_signal_stats(path):
-
-    reader = pyedflib.EdfReader(path)
-
-    means = []
-    stds = []
-
-    for i in range(0, 64):
-
-        signal = reader.readSignal(i, 0)
-        means.append(np.mean(signal))
-        stds.append(np.std(signal))
-
-    return means, stds
 
 
 def split_dataframe(shuffle: bool, df: pd.DataFrame, ratio: float):
