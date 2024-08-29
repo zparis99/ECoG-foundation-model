@@ -3,7 +3,9 @@ import torch
 import math
 import numpy as np
 import random
+import scipy
 from einops import rearrange
+from typing import Optional
 
 from config import ECoGDataConfig, ViTConfig
 
@@ -17,6 +19,93 @@ def seed_everything(seed=0, cudnn_deterministic=True):
     torch.cuda.manual_seed_all(seed)
 
 
+def preprocess_neural_data(
+    signal: np.array,
+    fs: int,
+    new_fs: int,
+    sample_secs: int,
+    bands: Optional[list[list[int]]] = None,
+    norm: Optional[str] = None,
+    means: Optional[np.array] = None,
+    stds: Optional[np.array] = None,
+) -> np.array:
+    """Preprocess and reshape neural data for VideoMAE model.
+
+    Args:
+        signal (np.array): Of shape [num_electrodes, num_samples]. Should already be cropped to the desired number of samples.
+        fs (int): The sampling rate of the signal.
+        new_fs (int): The sampling rate to resample the data to.
+        sample_secs (int): The number of seconds in a sample.
+        bands (Optional[list[list[int]]], optional): Should be a list of the form [[4, 8], [10, 50]] where
+            each set of two numbers represents a band of frequencies to filter from the provided signal.
+            If not set then signal is assumed to represent one band and is used as a lone band signal.
+            Defaults to None.
+        norm (Optional[str], optional): If "hour" then will use the passed means and stds to normalize the signal. Defaults to None.
+        means (Optional[np.array], optional): Of shape [num_electrodes]. Means for each electrode. Defaults to None.
+        stds (Optional[np.array], optional): Of shape [num_electrodes]. Standard deviations for each electrode. Defaults to None.
+
+    Returns:
+        np.array:
+            shape c*t*d*h*w, where
+            c = freq bands,
+            t = number of datapoints within a sample
+            d = depth (currently 1)
+            h = height of grid (currently 8)
+            w = width of grid (currently 8)
+    """
+
+    def norm(input, ch_idx):
+        output = input - means[ch_idx] / stds[ch_idx]
+
+        return output
+
+    if norm == "hour":
+
+        # z-score signal for each channel separately
+        for i in range(0, 64):
+            signal[i, :] = norm(signal[i], i)
+
+    # Extract frequency bands if provided.
+    if bands:
+        filtered_signal = np.zeros((len(bands), 64, signal.shape[1]))
+
+        for i, freqs in enumerate(bands):
+            sos = scipy.signal.butter(
+                4, freqs, btype="bandpass", analog=False, output="sos", fs=fs
+            )
+            filtered_signal[i] = scipy.signal.sosfiltfilt(sos, signal)
+            filtered_signal[i] = np.abs(scipy.signal.hilbert(filtered_signal[i]))
+    else:
+        # Add band axis of size 1 for non-filtered data.
+        filtered_signal = np.expand_dims(signal, axis=0)
+
+    resampled = resample_mean_signals(filtered_signal, fs, new_fs)
+    # rearrange into shape c*t*d*h*w, where
+    # c = freq bands,
+    # t = number of datapoints within a sample
+    # d = depth (currently 1)
+    # h = height of grid (currently 8)
+    # w = width of grid (currently 8)
+    preprocessed_signal = rearrange(
+        np.array(resampled, dtype=np.float32), "c (h w) t -> c t () h w", h=8, w=8
+    )
+
+    # Zero-pad if sample is too short.
+    expected_sample_length = sample_secs * new_fs
+    if preprocessed_signal.shape[1] < expected_sample_length:
+        padding = np.zeros(
+            (
+                preprocessed_signal.shape[0],
+                expected_sample_length - preprocessed_signal.shape[1],
+                1,
+                8,
+                8,
+            )
+        )
+        preprocessed_signal = np.concatenate((preprocessed_signal, padding), axis=1)
+        
+    return preprocessed_signal
+
 
 def resample_mean_signals(signal: np.array, old_fs: int, new_fs: int) -> np.array:
     """Resample signal with sampling rate of old_fs Hz to new_fs Hz by taking means over windows of data.
@@ -25,7 +114,7 @@ def resample_mean_signals(signal: np.array, old_fs: int, new_fs: int) -> np.arra
         signal (np.array): shape [bands, num_electrodes, samples]
         old_fs (int): Old sample rate in Hz.
         new_fs (int): Sample rate to resample to in Hz.
-        
+
     Returns:
         np.array: Resampled signal with the new sample rate.
     """
@@ -34,9 +123,9 @@ def resample_mean_signals(signal: np.array, old_fs: int, new_fs: int) -> np.arra
     # TODO: revisit using ceil here. By using ceil our final entry in our new array may be averaged
     # over fewer samples then the previous entries.
     num_new_samples = int(np.ceil(num_samples * new_fs / old_fs))
-    
+
     resampled_signal = np.zeros((signal.shape[0], signal.shape[1], num_new_samples))
-    
+
     # Current index needs to be a float to handle cases where old_fs and new_fs are not divisible.
     # Flooring results only after summing window widths ensures all of the data is included in the
     # averages.
@@ -44,16 +133,16 @@ def resample_mean_signals(signal: np.array, old_fs: int, new_fs: int) -> np.arra
     for i in range(num_new_samples):
         start_idx = int(np.floor(current_idx))
         end_idx = int(np.floor(current_idx + window_width))
-        
+
         if end_idx > start_idx:  # Ensure there is a range to average over
             resampled_signal[:, :, i] = np.mean(signal[:, :, start_idx:end_idx], axis=2)
         else:  # If the window size rounds to 0, just take the value at start_idx
             resampled_signal[:, :, i] = signal[:, :, start_idx]
-        
+
         current_idx += window_width
-    
+
     return resampled_signal
-        
+
 
 def count_params(model):
     total = sum(p.numel() for p in model.parameters())
