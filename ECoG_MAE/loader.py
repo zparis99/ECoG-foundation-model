@@ -25,16 +25,11 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.fs = fs
         self.new_fs = config.new_fs
         self.sample_secs = config.sample_length
+        
+        self.signal = self._load_grid_data()
         # since we take sample_length sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by sample_length.
         # Optionally can configure max_samples directly as well.
-        self.max_samples = (
-            config.max_samples
-            if config.max_samples
-            else (
-                highlevel.read_edf_header(edf_file=self.path)["Duration"]
-                / config.sample_length
-            )
-        )
+        self.max_samples = self.signal.shape[1] / self.fs / config.sample_length
         if config.norm == "hour":
             self.means, self.stds = get_signal_stats(self.path)
         else:
@@ -42,7 +37,6 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             self.stds = None
 
         self.index = 0
-        self.signal = self._load_grid_data()
 
     def __iter__(self):
         # this is to make sure we stop streaming from our dataset after the max number of samples is reached

@@ -32,8 +32,6 @@ class ECoGDataConfig:
     shuffle: bool = False
     # If True then uses a mock data loader.
     test_loader: bool = False
-    # The maximum number of samples to allow. Optional, if not set then will be read from edf file header.
-    max_samples: Optional[int] = None
 
 
 @dataclass
