@@ -18,11 +18,11 @@ from utils import preprocess_neural_data, get_signal_stats
 
 class ECoGDataset(torch.utils.data.IterableDataset):
 
-    def __init__(self, path: str, fs: int, config: ECoGDataConfig):
+    def __init__(self, path: str, config: ECoGDataConfig):
         self.config = config
         self.path = path
         self.bands = config.bands
-        self.fs = fs
+        self.fs = config.original_fs
         self.new_fs = config.new_fs
         self.sample_secs = config.sample_length
         
@@ -232,14 +232,12 @@ def dl_setup(
         config.ecog_data_config.train_data_proportion,
     )
 
-    fs = 512
-
     # load and concatenate data for train split
     train_filepaths, num_train_samples, train_samples = get_dataset_path_info(
         config.ecog_data_config.sample_length, root, train_data
     )
     train_datasets = [
-        ECoGDataset(train_path, fs, config.ecog_data_config)
+        ECoGDataset(train_path, config.ecog_data_config)
         for train_path in train_filepaths
     ]
     train_dataset_combined = torch.utils.data.ChainDataset(train_datasets)
@@ -252,7 +250,7 @@ def dl_setup(
         config.ecog_data_config.sample_length, root, test_data
     )
     test_datasets = [
-        ECoGDataset(test_path, fs, config.ecog_data_config)
+        ECoGDataset(test_path, config.ecog_data_config)
         for test_path in test_filepaths
     ]
     test_dataset_combined = torch.utils.data.ChainDataset(test_datasets)

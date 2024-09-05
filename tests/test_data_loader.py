@@ -55,8 +55,9 @@ def data_loader_creation_fn(create_fake_mne_file_fn):
         ch_names: list[str] = ["G" + str(i + 1) for i in range(NUM_CHANNELS + 1)],
         data: np.array = create_fake_sin_data(),
     ) -> ECoGDataset:
+        config.original_fs = FILE_SAMPLING_FREQUENCY
         fake_mne_file = create_fake_mne_file_fn(ch_names, data)
-        return ECoGDataset(fake_mne_file, FILE_SAMPLING_FREQUENCY, config)
+        return ECoGDataset(fake_mne_file, config)
 
     return get_data_loader
 
