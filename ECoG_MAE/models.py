@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from einops.layers.torch import Rearrange
 from rope import RotaryPositionalEmbeddings4D
+from mask import get_padding_mask, get_tube_mask
 
 
 def posemb_sincos_4d(patches, temperature=10000, dtype=torch.float32):
@@ -199,11 +200,18 @@ class SimpleViT(nn.Module):
         channels,
         dim_head=64,
         use_rope_emb: bool = False,
-        use_cls_token: bool = False
+        use_cls_token: bool = False,
+        device: str = "cuda",
     ):
         super().__init__()
         image_depth, image_height, image_width = image_size
         patch_depth, patch_height, patch_width = image_patch_size
+        
+        # Set these for creating fake masks later.
+        self.device = device
+        self.frame_patch_size = frame_patch_size
+        self.image_size  = image_size
+        self.patch_dims = image_patch_size
 
         # Check divisibility
         assert (
@@ -324,7 +332,36 @@ class SimpleViT(nn.Module):
         # ENCODER
         if decoder_mask is None:
             if verbose:
-                print(x.shape)
+                print(x.shape, x.sum())
+            
+            # If no tube padding mask is provided, don't mask anything other than padding out.
+            if tube_padding_mask is None:
+                num_frames = x.shape[2]
+                
+                nanned_signal = torch.where(
+                        x == 0, torch.tensor(float("nan")), x
+                    )
+                
+                tube_padding_mask = get_padding_mask(nanned_signal, self, self.device)
+                
+                num_patches = int(  # Defining the number of patches
+                    (self.image_size[0] / self.image_size[0])
+                    * (self.image_size[1] / self.patch_dims[1])
+                    * (self.image_size[2] / self.patch_dims[2])
+                    * num_frames
+                    / self.frame_patch_size
+    )
+                
+                encoder_mask = get_tube_mask(
+                    self.frame_patch_size,
+                    # Dont mask anything.
+                    0,
+                    num_patches,
+                    num_frames,
+                    tube_padding_mask,
+                    self.device,
+                )
+
             x = self.patchify(x)
             x = rearrange(x, "b ... d -> b (...) d")
             # TODO wrap into nn.Sequential (?)
@@ -332,26 +369,24 @@ class SimpleViT(nn.Module):
             x = self.patch_to_emb(x)
             x = self.layer_norm(x, tube_padding_mask)
             if verbose:
-                print(x.shape)
-            if verbose:
-                print(x.shape)
+                print(x.shape, x.sum())
             if not self.use_rope_emb:
                 if verbose:
                     print("pe", self.posemb_sincos_4d.shape)
                 x = x + self.posemb_sincos_4d.to(x.device)
             if verbose:
-                print("x", x.shape)
+                print("x", x.shape, x.sum())
             x = x[:, encoder_mask]
             if self.use_cls_token:
                 cls_tokens = self.cls_token.expand(len(x), -1, -1)
                 x = torch.cat((cls_tokens, x), dim=1)
             if verbose:
-                print("masked", x.shape)
+                print("masked", x.shape, x.sum())
             x = self.encoder_transformer(
                 x, mask=encoder_mask if self.use_rope_emb else None
             )
             if verbose:
-                print(x.shape)
+                print(x.shape, x.sum())
         else:  # DECODER
             if verbose:
                 print(x.shape)
