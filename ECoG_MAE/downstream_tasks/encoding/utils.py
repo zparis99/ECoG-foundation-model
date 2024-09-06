@@ -1,3 +1,5 @@
+from dataclasses import asdict, replace
+
 import numpy as np
 from scipy import stats
 from sklearn.pipeline import make_pipeline
@@ -7,6 +9,8 @@ from sklearn.linear_model import LinearRegression
 import torch
 import torch.nn as nn
 
+from config import ECoGDataConfig
+from downstream_tasks.encoding.config import EncodingDataConfig
 from downstream_tasks.encoding.load_signal import EncodingDataset
 
 
@@ -131,3 +135,20 @@ def generate_embedding_dataset(
     neural_embeddings = np.array(neural_embeddings)
 
     return word_embeddings, neural_embeddings
+
+
+def merge_data_configs(encoding_data_config: EncodingDataConfig, ecog_data_config: ECoGDataConfig) -> EncodingDataConfig:
+    """Overwrites fields in encoding_data_config with the fields set in ecog_data_config.
+
+    Args:
+        encoding_data_config (EncodingDataConfig): encoding data config which will have fields overwritten.
+        ecog_data_config (ECoGDataConfig): ecog data config which contains field to overwrite in encoding_data_config
+
+    Returns:
+        EncodingDataConfig: config with ECoGDataConfig fields overwritten other than original_fs
+    """
+    # Maintain original_fs from encoding_config because it could be different than the one for pretraining.
+    encoding_original_fs = encoding_data_config.original_fs
+    updated_config = replace(encoding_data_config, **asdict(ecog_data_config))
+    updated_config.original_fs = encoding_original_fs
+    return updated_config

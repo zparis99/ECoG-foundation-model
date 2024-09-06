@@ -496,6 +496,7 @@ def train_model(
             "seen_train_losses": seen_train_losses,
             "test_losses": test_losses,
             "seen_test_losses": seen_test_losses,
+            "experiment_config": config,
         }
 
         dir = os.getcwd() + f"/checkpoints/"
