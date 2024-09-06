@@ -19,6 +19,7 @@ def seed_everything(seed=0, cudnn_deterministic=True):
     torch.cuda.manual_seed_all(seed)
 
 
+# TODO: Test this function.
 def preprocess_neural_data(
     signal: np.array,
     fs: int,
@@ -28,6 +29,7 @@ def preprocess_neural_data(
     norm: Optional[str] = None,
     means: Optional[np.array] = None,
     stds: Optional[np.array] = None,
+    pad_before_sample: bool = False,
 ) -> np.array:
     """Preprocess and reshape neural data for VideoMAE model.
 
@@ -43,6 +45,7 @@ def preprocess_neural_data(
         norm (Optional[str], optional): If "hour" then will use the passed means and stds to normalize the signal. Defaults to None.
         means (Optional[np.array], optional): Of shape [num_electrodes]. Means for each electrode. Defaults to None.
         stds (Optional[np.array], optional): Of shape [num_electrodes]. Standard deviations for each electrode. Defaults to None.
+        pad_before_sample (bool): If true then samples which are not the desired length will be padded with 0's before the actual extracted signal. Useful if sample is taken from the very start of the signal.
 
     Returns:
         np.array:
@@ -102,8 +105,11 @@ def preprocess_neural_data(
                 8,
             )
         )
-        preprocessed_signal = np.concatenate((preprocessed_signal, padding), axis=1)
-        
+        if pad_before_sample:
+            preprocessed_signal = np.concatenate((padding, preprocessed_signal), axis=1)
+        else:
+            preprocessed_signal = np.concatenate((preprocessed_signal, padding), axis=1)
+
     return preprocessed_signal
 
 
