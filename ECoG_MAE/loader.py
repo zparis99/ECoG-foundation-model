@@ -51,6 +51,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         start = t.time()
 
+        # TODO: Add configurable way to filter out examples which require padding if we want to train
+        # without them. Same for encoding dataloader.
         start_sample = self.index * self.sample_secs * self.fs
         end_sample = (self.index + 1) * self.sample_secs * self.fs
         current_sample = self.signal[:, start_sample:end_sample]
