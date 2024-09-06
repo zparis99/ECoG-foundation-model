@@ -1,0 +1,133 @@
+import numpy as np
+from scipy import stats
+from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import KFold
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression
+import torch
+import torch.nn as nn
+
+from downstream_tasks.encoding.load_signal import EncodingDataset
+
+
+def pearson_correlation(groundtruth, predicted):
+    """Get correlation metrics for two sets of data. Here named groundtruth and predicted to align with our usecase.
+
+    Code borrowed with minor alterations from: https://github.com/hassonlab/247-encoding/blob/e0b7468824bc950f15dd8e47f9b7c4bdb3615109/scripts/tfsenc_utils.py#L18
+
+    Args:
+        groundtruth (np.array): shape [num_examples, ]
+        predicted (np.array): [description]
+
+    Returns:
+        [type]: [description]
+    """
+    df = np.shape(groundtruth)[0] - 2
+
+    groundtruth -= np.mean(groundtruth, axis=0)
+    predicted -= np.mean(predicted, axis=0)
+
+    r = np.sum(groundtruth * predicted, 0) / np.sqrt(
+        np.sum(groundtruth * groundtruth, 0) * np.sum(predicted * predicted, 0)
+    )
+
+    t = r / np.sqrt((1 - np.square(r)) / df)
+    p = stats.t.sf(t, df)
+
+    r = r.squeeze()
+
+    if r.size > 1:
+        r = r.tolist()
+    else:
+        r = float(r)
+
+    return r, p, t
+
+
+# TODO: Add tests for this.
+def run_regression(X: np.array, Y: np.array, num_folds: int) -> np.array:
+    """Builds a linear regression model from X->Y using num_folds folds.
+
+    Args:
+        X (np.array): Shape [num_examples, num_variables] the independent variable.
+        Y (np.array): Shape [num_examples, num_variables] the dependent variable.
+        num_folds (int): Number of folds to run training/testing over.
+
+    Returns:
+        predicted_values: np.array of shape [num_examples, num_variables] where the ith row corresponds to a prediction of
+            the ith in Y, generated when the fold containing the ith row was in the test set.
+    """
+    # Make folds of data.
+    kf = KFold(n_splits=num_folds)
+
+    # Used to track predictions for
+    all_predictions = np.zeros_like(Y)
+
+    # TODO: Allow for adding a torch linear head to model which can be used to pass gradients backwards and finetune the
+    # model if that's something we choose to do in the future. Using sklearn for now because it's simple and easily
+    # runs on cpu. Can also allow for non-linearities in torch model if necessary.
+    for train_index, test_index in kf.split(X):
+        train_x, test_x = X[train_index], X[test_index]
+        train_y = Y[train_index]
+
+        model = make_pipeline(StandardScaler(), LinearRegression())
+
+        model.fit(train_x, train_y)
+
+        predictions = model.predict(test_x)
+
+        all_predictions[test_index, :] = predictions
+
+    return all_predictions
+
+
+# TODO: Add tests for this.
+def generate_embedding_dataset(
+    dataset: EncodingDataset, model: nn.Module, embedding_batch_size: int, device: str
+) -> tuple[np.array, np.array]:
+    """Gathers word embeddings and generates neural embeddings using model from the dataset.
+
+    Args:
+        dataset (EncodingDataset): dataset used to gather word and neural data.
+        model (nn.Module): model used to generate neural embeddings. Expected as of now to output embeddings of shape
+            [batch_size, num_tokens, output_dim] where num_tokens is the number of patches for the VideoMAE model, although different
+            models could be plugged in here as well. Embeddings are joined together using average pooling to form one summary embedding.
+        embedding_batch_size (int): The number of neural examples to pass into the model per-inference. Can speed up inference by
+            parallelizing at the cost of RAM or VRAM.
+        device (str): The name of the device to run inference on. Model is assumed to already be on this device.
+
+    Returns:
+        tuple[np.array, np.array]: (word_embeddings, neural_embeddings) both parallel arrays containing the embeddings for our examples.
+    """
+
+    # Setup dataloader and iterate through examples.
+    word_embeddings = []
+    neural_embeddings = []
+
+    # Collect data into batches to accelerate inference.
+    neural_batch = []
+    for word_embedding, neural_data in dataset:
+        word_embeddings.append(word_embedding)
+        batch_ready_neural_data = np.expand_dims(neural_data, 0)
+        neural_batch.append(torch.from_numpy(batch_ready_neural_data))
+
+        if len(neural_batch) == embedding_batch_size:
+            neural_data = torch.cat(neural_batch)
+            neural_data.to(torch.device(device))
+
+            # Model output is shape:
+            # [batch_size, num_patches, output_dim]
+            model_outputs = model(neural_data)
+
+            # Average pooling, can consider other options in the future.
+            pooled_embeddings = torch.mean(model_outputs, dim=1)
+
+            for embedding in pooled_embeddings:
+                neural_embeddings.append(embedding.detach().numpy())
+
+            neural_batch = []
+
+    word_embeddings = np.array(word_embeddings)
+    neural_embeddings = np.array(neural_embeddings)
+
+    return word_embeddings, neural_embeddings
