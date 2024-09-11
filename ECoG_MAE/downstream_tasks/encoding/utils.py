@@ -35,9 +35,7 @@ def pearson_correlation(groundtruth, predicted):
         np.sum(groundtruth * groundtruth, 1) * np.sum(predicted * predicted, 1)
     )
 
-    # Add a small epsilon to denominator to prevent divide by 0 if signals are equal.
-    epsilon = 1e-10
-    t = r / (np.sqrt((1 - np.square(r)) + epsilon) / df)
+    t = r / (np.sqrt((1 - np.square(r))) / df)
     p = stats.t.sf(t, df)
 
     r = r.squeeze()
