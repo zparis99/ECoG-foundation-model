@@ -26,16 +26,18 @@ def pearson_correlation(groundtruth, predicted):
     Returns:
         [type]: [description]
     """
-    df = np.shape(groundtruth)[0] - 2
+    df = np.shape(groundtruth)[1] - 2
 
-    groundtruth -= np.mean(groundtruth, axis=0)
-    predicted -= np.mean(predicted, axis=0)
+    groundtruth -= np.mean(groundtruth, axis=1, keepdims=True)
+    predicted -= np.mean(predicted, axis=1, keepdims=True)
 
-    r = np.sum(groundtruth * predicted, 0) / np.sqrt(
-        np.sum(groundtruth * groundtruth, 0) * np.sum(predicted * predicted, 0)
+    r = np.sum(groundtruth * predicted, 1) / np.sqrt(
+        np.sum(groundtruth * groundtruth, 1) * np.sum(predicted * predicted, 1)
     )
 
-    t = r / np.sqrt((1 - np.square(r)) / df)
+    # Add a small epsilon to denominator to prevent divide by 0 if signals are equal.
+    epsilon = 1e-10
+    t = r / (np.sqrt((1 - np.square(r)) + epsilon) / df)
     p = stats.t.sf(t, df)
 
     r = r.squeeze()
