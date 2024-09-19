@@ -20,6 +20,8 @@ class ECoGDataConfig:
     bands: list[list[int]] = field(
         default_factory=lambda: [[4, 8], [8, 13], [13, 30], [30, 55], [70, 200]]
     )
+    # Original sanmpling frequency of data.
+    original_fs: int = 512
     # Frequency to resample data to.
     new_fs: int = 20
     # Relative path to the dataset root directory.
@@ -32,8 +34,6 @@ class ECoGDataConfig:
     shuffle: bool = False
     # If True then uses a mock data loader.
     test_loader: bool = False
-    # The maximum number of samples to allow. Optional, if not set then will be read from edf file header.
-    max_samples: Optional[int] = None
 
 
 @dataclass

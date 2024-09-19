@@ -1,6 +1,5 @@
 import os
 
-import matplotlib.pyplot as plt
 import numpy as np
 import mne
 import pytest
@@ -56,15 +55,16 @@ def data_loader_creation_fn(create_fake_mne_file_fn):
         ch_names: list[str] = ["G" + str(i + 1) for i in range(NUM_CHANNELS + 1)],
         data: np.array = create_fake_sin_data(),
     ) -> ECoGDataset:
+        config.original_fs = FILE_SAMPLING_FREQUENCY
         fake_mne_file = create_fake_mne_file_fn(ch_names, data)
-        return ECoGDataset(fake_mne_file, FILE_SAMPLING_FREQUENCY, config)
+        return ECoGDataset(fake_mne_file, config)
 
     return get_data_loader
 
 
 def test_data_loader_can_handle_configurable_bands(data_loader_creation_fn):
     config = ECoGDataConfig(
-        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, max_samples=10
+        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20,
     )
     data_loader = data_loader_creation_fn(config)
         
@@ -80,7 +80,7 @@ def test_data_loader_can_handle_configurable_bands(data_loader_creation_fn):
 
 def test_data_loader_grid_creation_returns_input_data(data_loader_creation_fn):
     config = ECoGDataConfig(
-        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, max_samples=10
+        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20,
     )
     data_loader = data_loader_creation_fn(config)
 
@@ -98,7 +98,7 @@ def test_data_loader_grid_creation_returns_input_data(data_loader_creation_fn):
 
 def test_data_loader_can_handle_missing_channel(data_loader_creation_fn):
     config = ECoGDataConfig(
-        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, max_samples=10
+        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20,
     )
     # Omit "G1" from list of channels so loader will fill that channels with zeros.
     ch_names = ["G" + str(i + 1) for i in range(1, 65)]
@@ -116,7 +116,7 @@ def test_data_loader_can_handle_missing_channel(data_loader_creation_fn):
 
 def test_data_loader_can_handle_durations_not_divisible_by_sample_length(data_loader_creation_fn):
     config = ECoGDataConfig(
-        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, max_samples=10.498, sample_length=1
+        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, sample_length=1
     )
     # Create data for 10.5 seconds.
     fake_data = np.ones((65, int(10.5 * FILE_SAMPLING_FREQUENCY)))
@@ -133,7 +133,7 @@ def test_data_loader_can_handle_durations_not_divisible_by_sample_length(data_lo
 
 def test_data_loader_resets_from_beginning_of_dataset(data_loader_creation_fn):
     config = ECoGDataConfig(
-        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, max_samples=10.498, sample_length=1
+        batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, sample_length=1
     )
     # Make sure we can iterate through data twice and it returns the same data each time.
     data_loader = data_loader_creation_fn(config)
