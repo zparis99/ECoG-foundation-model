@@ -116,6 +116,9 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
         # delete items that were shifted upwards
         sig = sig[:64, :]
+        
+        # Make sure signal is float32
+        sig = np.float32(sig)
 
         return sig
 

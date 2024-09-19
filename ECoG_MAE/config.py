@@ -97,7 +97,6 @@ def create_video_mae_experiment_config(args):
     """
     config = configparser.ConfigParser(converters={'list': json.loads})
     config.read(args.config_file)
-    print(config.sections())
     
     return VideoMAEExperimentConfig(
         video_mae_task_config=VideoMAETaskConfig(
