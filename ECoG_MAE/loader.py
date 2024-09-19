@@ -25,13 +25,14 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.fs = config.original_fs
         self.new_fs = config.new_fs
         self.sample_secs = config.sample_length
-        
-        self.signal = self._load_grid_data()
+
+        # Temporarily load data to get stats. Don't maintain pointer though to avoid RAM overuse.
+        signal = self._load_grid_data()
         # since we take sample_length sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by sample_length.
         # Optionally can configure max_samples directly as well.
-        self.max_samples = self.signal.shape[1] / self.fs / config.sample_length
+        self.max_samples = signal.shape[1] / self.fs / config.sample_length
         if config.norm == "hour":
-            self.means, self.stds = get_signal_stats(self.signal)
+            self.means, self.stds = get_signal_stats(signal)
         else:
             self.means = None
             self.stds = None
@@ -39,13 +40,18 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.index = 0
 
     def __iter__(self):
+        # Load data into ram on first iteration.
+        if self.index == 0:
+            self.signal = self._load_grid_data()
         # this is to make sure we stop streaming from our dataset after the max number of samples is reached
         while self.index < self.max_samples:
             yield self.sample_data()
             self.index += 1
-        # this is to reset the counter after we looped through the dataset so that streaming starts at 0 in the next epoch, since the dataset is not initialized again
+        # this is to reset the counter after we looped through the dataset so that streaming starts at 0 in the next epoch,
+        # since the dataset is not initialized again. Also destroy pointer to data to free RAM.
         if self.index >= self.max_samples:
             self.index = 0
+            del self.signal
 
     def sample_data(self) -> np.array:
 
@@ -252,8 +258,7 @@ def dl_setup(
         config.ecog_data_config.sample_length, root, test_data
     )
     test_datasets = [
-        ECoGDataset(test_path, config.ecog_data_config)
-        for test_path in test_filepaths
+        ECoGDataset(test_path, config.ecog_data_config) for test_path in test_filepaths
     ]
     test_dataset_combined = torch.utils.data.ChainDataset(test_datasets)
     test_dl = torch.utils.data.DataLoader(
