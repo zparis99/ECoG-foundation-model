@@ -112,7 +112,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             # first we check whether the channel is included
             if not np.isin(channel, raw.info.ch_names):
                 # if not we insert 0 padding and shift upwards
-                sig = np.insert(sig, i, np.zeros((n_samples)), axis=0)
+                sig = np.insert(sig, i, np.zeros((n_samples), dtype=np.float32), axis=0)
 
         # delete items that were shifted upwards
         sig = sig[:64, :]
@@ -201,19 +201,45 @@ def get_dataset_path_info(
             {
                 "name": data_path,
                 "num_samples": int(
-                    highlevel.read_edf_header(edf_file=data_path)["Duration"] / 2
+                    highlevel.read_edf_header(edf_file=data_path)["Duration"] / sample_length
                 ),
             }
         )
 
         num_samples = num_samples + int(
-            highlevel.read_edf_header(edf_file=data_path)["Duration"] / 2
+            highlevel.read_edf_header(edf_file=data_path)["Duration"] / sample_length
         )
 
         split_filepaths.append(data_path)
 
     return split_filepaths, num_samples, pd.DataFrame(sample_desc)
 
+
+def _create_dataloader(root: str, data_files_df: pd.DataFrame, ecog_data_config: ECoGDataConfig) -> tuple[torch.utils.data.DataLoader, int, pd.DataFrame]:
+    """Given a dataframe containing the BIDS data info in a dataset and the data config, create a dataloader and associated information.
+
+    Args:
+        data_files_df (pd.DataFrame): Has columns subject, task, and chunk for finding desired data in BIDS format.
+        ecog_data_config (ECoGDataConfig): Configuration for how to preprocess data.
+
+    Returns:
+        tuple[torch.utils.data.DataLoader, int, pd.DataFrame]: [Dataloader for data, number of samples in dataloader, descriptions of how many samples are in each file]
+    """
+    # load and concatenate data for train split
+    filepaths, num_samples, sample_desc = get_dataset_path_info(
+        ecog_data_config.sample_length, root, data_files_df
+    )
+    datasets = [
+        ECoGDataset(train_path, ecog_data_config)
+        for train_path in filepaths
+    ]
+    dataset_combined = torch.utils.data.ChainDataset(datasets)
+    dataloader = torch.utils.data.DataLoader(
+        dataset_combined, batch_size=ecog_data_config.batch_size
+    )
+    
+    return dataloader, num_samples, sample_desc
+    
 
 def dl_setup(
     config: VideoMAEExperimentConfig,
@@ -242,42 +268,20 @@ def dl_setup(
         data,
         config.ecog_data_config.train_data_proportion,
     )
-
-    # load and concatenate data for train split
-    train_filepaths, num_train_samples, train_samples = get_dataset_path_info(
-        config.ecog_data_config.sample_length, root, train_data
-    )
-    train_datasets = [
-        ECoGDataset(train_path, config.ecog_data_config)
-        for train_path in train_filepaths
-    ]
-    train_dataset_combined = torch.utils.data.ChainDataset(train_datasets)
-    train_dl = torch.utils.data.DataLoader(
-        train_dataset_combined, batch_size=config.ecog_data_config.batch_size
-    )
-
-    # load and concatenate data for test split
-    test_filepaths, _, test_samples = get_dataset_path_info(
-        config.ecog_data_config.sample_length, root, test_data
-    )
-    test_datasets = [
-        ECoGDataset(test_path, config.ecog_data_config) for test_path in test_filepaths
-    ]
-    test_dataset_combined = torch.utils.data.ChainDataset(test_datasets)
-    test_dl = torch.utils.data.DataLoader(
-        test_dataset_combined, batch_size=config.ecog_data_config.batch_size
-    )
+    
+    train_dl, num_train_samples, train_samples_desc = _create_dataloader(root, train_data, config.ecog_data_config)
+    test_dl, _, test_samples_desc = _create_dataloader(root, test_data, config.ecog_data_config)
 
     dir = os.getcwd() + f"/results/samples/"
     if not os.path.exists(dir):
         os.makedirs(dir)
 
-    train_samples.to_csv(
+    train_samples_desc.to_csv(
         dir + f"{config.job_name}_train_samples.csv",
         index=False,
     )
 
-    test_samples.to_csv(
+    test_samples_desc.to_csv(
         dir + f"{config.job_name}_test_samples.csv",
         index=False,
     )
