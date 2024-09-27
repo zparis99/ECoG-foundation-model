@@ -73,7 +73,7 @@ def train_model(
             model, optimizer, train_dl, lr_scheduler
         )
 
-    mse = nn.MSELoss()
+    mse = nn.MSELoss(reduction='none')
     if use_contrastive_loss:
         logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
@@ -265,7 +265,7 @@ def train_model(
                     seen_loss = mse(seen_output, seen_target) + mse(
                         seen_recon_signal, seen_target_signal
                     )
-                elif config.trainer_config.losss == "full":
+                elif config.trainer_config.loss == "full":
                     loss = mse(full_recon_signal, signal)
                     seen_loss = mse(seen_recon_signal, seen_target_signal)
                 elif config.trainer_config.loss == "highgamma":
