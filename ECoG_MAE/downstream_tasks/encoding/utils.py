@@ -10,8 +10,52 @@ import torch
 import torch.nn as nn
 
 from config import ECoGDataConfig
-from downstream_tasks.encoding.config import EncodingDataConfig
+from downstream_tasks.encoding.config import (
+    EncodingDataConfig,
+    EncodingExperimentConfig,
+)
 from downstream_tasks.encoding.load_signal import EncodingDataset
+
+
+def run_encoding_task(
+    experiment_config: EncodingExperimentConfig,
+    ecog_data_config: ECoGDataConfig,
+    model,
+):
+    """Run encoding task between word embeddings and neural embeddings.
+
+    Args:
+        experiment_config (EncodingExperimentConfig): Config for encoding.
+        ecog_data_config (ECoGDataConfig): Config for processing data. Should be from model checkpoint.
+        model (nn.Module): Callable model on neural data for generating embeddings. Currently just SimpleViT
+        inference_device_name (str): Device to run encoding on (i.e. cpu, cuda, etc)
+
+    Returns:
+        tuple[np.array, np.array]: (pearson correlations, mean squared prediction error)
+    """
+    encoding_data_config = merge_data_configs(
+        experiment_config.encoding_data_config, ecog_data_config
+    )
+
+    dataset = EncodingDataset(encoding_data_config)
+
+    word_embeddings, neural_embeddings = generate_embedding_dataset(
+        dataset,
+        model,
+        experiment_config.encoding_task_config.embedding_batch_size,
+        experiment_config.encoding_task_config.embedding_device,
+    )
+
+    predictions = run_regression(
+        word_embeddings,
+        neural_embeddings,
+        experiment_config.encoding_task_config.num_folds,
+    )
+
+    rp, _, _ = pearson_correlation(neural_embeddings, predictions)
+    mspe = np.square(neural_embeddings - predictions).mean()
+
+    return rp, mspe
 
 
 def pearson_correlation(groundtruth, predicted):
@@ -137,7 +181,9 @@ def generate_embedding_dataset(
     return word_embeddings, neural_embeddings
 
 
-def merge_data_configs(encoding_data_config: EncodingDataConfig, ecog_data_config: ECoGDataConfig) -> EncodingDataConfig:
+def merge_data_configs(
+    encoding_data_config: EncodingDataConfig, ecog_data_config: ECoGDataConfig
+) -> EncodingDataConfig:
     """Overwrites fields in encoding_data_config with the fields set in ecog_data_config.
 
     Args:
