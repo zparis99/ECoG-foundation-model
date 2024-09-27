@@ -45,7 +45,14 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             self.signal = self._load_grid_data()
         # this is to make sure we stop streaming from our dataset after the max number of samples is reached
         while self.index < self.max_samples:
-            yield self.sample_data()
+            # Exclude examples where the sample goes past the end of the signal.
+            start_sample = self.index * self.sample_secs * self.fs
+            end_sample = (self.index + 1) * self.sample_secs * self.fs
+            if end_sample > self.signal.shape[1]:
+                self.index = self.max_samples
+                break
+                
+            yield self.sample_data(start_sample, end_sample)
             self.index += 1
         # this is to reset the counter after we looped through the dataset so that streaming starts at 0 in the next epoch,
         # since the dataset is not initialized again. Also destroy pointer to data to free RAM.
@@ -53,14 +60,10 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             self.index = 0
             del self.signal
 
-    def sample_data(self) -> np.array:
+    def sample_data(self, start_sample, end_sample) -> np.array:
 
         start = t.time()
 
-        # TODO: Add configurable way to filter out examples which require padding if we want to train
-        # without them. Same for encoding dataloader.
-        start_sample = self.index * self.sample_secs * self.fs
-        end_sample = (self.index + 1) * self.sample_secs * self.fs
         current_sample = self.signal[:, start_sample:end_sample]
 
         preprocessed_signal = preprocess_neural_data(
