@@ -201,14 +201,12 @@ class SimpleViT(nn.Module):
         dim_head=64,
         use_rope_emb: bool = False,
         use_cls_token: bool = False,
-        device: str = "cuda",
     ):
         super().__init__()
         image_depth, image_height, image_width = image_size
         patch_depth, patch_height, patch_width = image_patch_size
         
         # Set these for creating fake masks later.
-        self.device = device
         self.frame_patch_size = frame_patch_size
         self.image_size  = image_size
         self.patch_dims = image_patch_size
@@ -342,7 +340,7 @@ class SimpleViT(nn.Module):
                         x == 0, torch.tensor(float("nan")), x
                     )
                 
-                tube_padding_mask = get_padding_mask(nanned_signal, self, self.device)
+                tube_padding_mask = get_padding_mask(nanned_signal, self, x.device)
                 
                 num_patches = int(  # Defining the number of patches
                     (self.image_size[0] / self.image_size[0])
@@ -359,8 +357,11 @@ class SimpleViT(nn.Module):
                     num_patches,
                     num_frames,
                     tube_padding_mask,
-                    self.device,
+                    x.device,
                 )
+                
+                tube_padding_mask = tube_padding_mask.to(x.device)
+                encoder_mask = encoder_mask.to(x.device)
 
             x = self.patchify(x)
             x = rearrange(x, "b ... d -> b (...) d")
