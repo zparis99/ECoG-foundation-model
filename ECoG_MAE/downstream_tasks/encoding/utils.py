@@ -151,29 +151,37 @@ def generate_embedding_dataset(
     # Setup dataloader and iterate through examples.
     word_embeddings = []
     neural_embeddings = []
+    
+    def _generate_neural_embeddings(neural_batch: list):
+        neural_data = torch.cat(neural_batch)
+        neural_data = neural_data.to(device)
+
+        # Model output is shape:
+        # [batch_size, num_patches, output_dim]
+        model_outputs = model(neural_data)
+
+        # Average pooling, can consider other options in the future.
+        pooled_embeddings = torch.mean(model_outputs, dim=1)
+
+        for embedding in pooled_embeddings:
+            neural_embeddings.append(embedding.detach().cpu().numpy())
 
     # Collect data into batches to accelerate inference.
     neural_batch = []
+        
     for word_embedding, neural_data in dataset:
         word_embeddings.append(word_embedding)
         batch_ready_neural_data = np.expand_dims(neural_data, 0)
         neural_batch.append(torch.from_numpy(batch_ready_neural_data))
 
         if len(neural_batch) == embedding_batch_size:
-            neural_data = torch.cat(neural_batch)
-            neural_data = neural_data.to(device)
-
-            # Model output is shape:
-            # [batch_size, num_patches, output_dim]
-            model_outputs = model(neural_data)
-
-            # Average pooling, can consider other options in the future.
-            pooled_embeddings = torch.mean(model_outputs, dim=1)
-
-            for embedding in pooled_embeddings:
-                neural_embeddings.append(embedding.detach().cpu().numpy())
-
+            _generate_neural_embeddings(neural_batch)
             neural_batch = []
+            
+    # Catch any remaining examples.
+    if len(neural_batch) > 0:
+        _generate_neural_embeddings(neural_batch)
+        neural_batch = []
 
     word_embeddings = np.array(word_embeddings)
     neural_embeddings = np.array(neural_embeddings)
