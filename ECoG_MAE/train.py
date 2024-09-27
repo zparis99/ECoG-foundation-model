@@ -73,7 +73,7 @@ def train_model(
             model, optimizer, train_dl, lr_scheduler
         )
 
-    mse = nn.MSELoss()
+    mse = nn.MSELoss(reduction='none')
     if use_contrastive_loss:
         logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
@@ -253,30 +253,30 @@ def train_model(
 
                 # calculate loss
                 if config.trainer_config.loss == "patch":
-                    loss = mse(recon_output, recon_target)
-                    seen_loss = mse(seen_output, seen_target)
+                    loss = mse(recon_output, recon_target).nanmean()
+                    seen_loss = mse(seen_output, seen_target).nanmean()
                 elif config.trainer_config.loss == "signal":
-                    loss = mse(unseen_recon_signal, unseen_target_signal)
-                    seen_loss = mse(seen_recon_signal, seen_target_signal)
+                    loss = mse(unseen_recon_signal, unseen_target_signal).nanmean()
+                    seen_loss = mse(seen_recon_signal, seen_target_signal).nanmean()
                 elif config.trainer_config.loss == "both":
-                    loss = mse(recon_output, recon_target) + mse(
+                    loss = mse(recon_output, recon_target).nanmean() + mse(
                         unseen_recon_signal, unseen_target_signal
-                    )
-                    seen_loss = mse(seen_output, seen_target) + mse(
+                    ).nanmean()
+                    seen_loss = mse(seen_output, seen_target).nanmean() + mse(
                         seen_recon_signal, seen_target_signal
-                    )
-                elif config.trainer_config.losss == "full":
-                    loss = mse(full_recon_signal, signal)
-                    seen_loss = mse(seen_recon_signal, seen_target_signal)
+                    ).nanmean()
+                elif config.trainer_config.loss == "full":
+                    loss = mse(full_recon_signal, signal).nanmean()
+                    seen_loss = mse(seen_recon_signal, seen_target_signal).nanmean()
                 elif config.trainer_config.loss == "highgamma":
                     loss = loss = mse(
                         unseen_recon_signal[:, 4, :, :],
                         unseen_target_signal[:, 4, :, :],
-                    )
+                    ).nanmean()
                     seen_loss = mse(
                         seen_recon_signal[:, 4, :, :],
                         seen_target_signal[:, 4, :, :],
-                    )
+                    ).nanmean()
 
                 accelerator.backward(loss)
                 optimizer.step()
@@ -425,30 +425,30 @@ def train_model(
 
                 # calculate loss
                 if config.trainer_config.loss == "patch":
-                    loss = mse(recon_output, recon_target)
-                    seen_loss = mse(seen_output, seen_target)
+                    loss = mse(recon_output, recon_target).nanmean()
+                    seen_loss = mse(seen_output, seen_target).nanmean()
                 elif config.trainer_config.loss == "signal":
-                    loss = mse(unseen_recon_signal, unseen_target_signal)
-                    seen_loss = mse(seen_recon_signal, seen_target_signal)
+                    loss = mse(unseen_recon_signal, unseen_target_signal).nanmean()
+                    seen_loss = mse(seen_recon_signal, seen_target_signal).nanmean()
                 elif config.trainer_config.loss == "both":
-                    loss = mse(recon_output, recon_target) + mse(
+                    loss = mse(recon_output, recon_target).nanmean() + mse(
                         unseen_recon_signal, unseen_target_signal
-                    )
-                    seen_loss = mse(seen_output, seen_target) + mse(
+                    ).nanmean()
+                    seen_loss = mse(seen_output, seen_target).nanmean() + mse(
                         seen_recon_signal, seen_target_signal
-                    )
+                    ).nanmean()
                 elif config.trainer_config.loss == "full":
-                    loss = mse(full_recon_signal, signal)
-                    seen_loss = mse(seen_recon_signal, seen_target_signal)
+                    loss = mse(full_recon_signal, signal).nanmean()
+                    seen_loss = mse(seen_recon_signal, seen_target_signal).nanmean()
                 elif config.trainer_config.loss == "highgamma":
                     loss = loss = mse(
                         unseen_recon_signal[:, 4, :, :],
                         unseen_target_signal[:, 4, :, :],
-                    )
+                    ).nanmean()
                     seen_loss = mse(
                         seen_recon_signal[:, 4, :, :],
                         seen_target_signal[:, 4, :, :],
-                    )
+                    ).nanmean()
 
                 test_losses.append(loss.item())
                 seen_test_losses.append(seen_loss.item())
@@ -637,7 +637,7 @@ def train_model(
             plot_correlation(
                 config.job_name, unseen_test_avg_corr, "unseen_test_avg_correlation"
             )
-            plot_recon_signals(config.job_name, model_recon)
+            plot_recon_signals(config.job_name, config.trainer_config.num_epochs, model_recon)
 
             plt.close("all")
 

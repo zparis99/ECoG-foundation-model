@@ -10,8 +10,52 @@ import torch
 import torch.nn as nn
 
 from config import ECoGDataConfig
-from downstream_tasks.encoding.config import EncodingDataConfig
+from downstream_tasks.encoding.config import (
+    EncodingDataConfig,
+    EncodingExperimentConfig,
+)
 from downstream_tasks.encoding.load_signal import EncodingDataset
+
+
+def run_encoding_task(
+    experiment_config: EncodingExperimentConfig,
+    ecog_data_config: ECoGDataConfig,
+    model,
+):
+    """Run encoding task between word embeddings and neural embeddings.
+
+    Args:
+        experiment_config (EncodingExperimentConfig): Config for encoding.
+        ecog_data_config (ECoGDataConfig): Config for processing data. Should be from model checkpoint.
+        model (nn.Module): Callable model on neural data for generating embeddings. Currently just SimpleViT
+        inference_device_name (str): Device to run encoding on (i.e. cpu, cuda, etc)
+
+    Returns:
+        tuple[np.array, np.array]: (pearson correlations, mean squared prediction error)
+    """
+    encoding_data_config = merge_data_configs(
+        experiment_config.encoding_data_config, ecog_data_config
+    )
+
+    dataset = EncodingDataset(encoding_data_config)
+
+    word_embeddings, neural_embeddings = generate_embedding_dataset(
+        dataset,
+        model,
+        experiment_config.encoding_task_config.embedding_batch_size,
+        experiment_config.encoding_task_config.embedding_device,
+    )
+
+    predictions = run_regression(
+        word_embeddings,
+        neural_embeddings,
+        experiment_config.encoding_task_config.num_folds,
+    )
+
+    rp, _, _ = pearson_correlation(neural_embeddings, predictions)
+    mspe = np.square(neural_embeddings - predictions).mean()
+
+    return rp, mspe
 
 
 def pearson_correlation(groundtruth, predicted):
@@ -107,29 +151,37 @@ def generate_embedding_dataset(
     # Setup dataloader and iterate through examples.
     word_embeddings = []
     neural_embeddings = []
+    
+    def _generate_neural_embeddings(neural_batch: list):
+        neural_data = torch.cat(neural_batch)
+        neural_data = neural_data.to(device)
+
+        # Model output is shape:
+        # [batch_size, num_patches, output_dim]
+        model_outputs = model(neural_data)
+
+        # Average pooling, can consider other options in the future.
+        pooled_embeddings = torch.mean(model_outputs, dim=1)
+
+        for embedding in pooled_embeddings:
+            neural_embeddings.append(embedding.detach().cpu().numpy())
 
     # Collect data into batches to accelerate inference.
     neural_batch = []
+        
     for word_embedding, neural_data in dataset:
         word_embeddings.append(word_embedding)
         batch_ready_neural_data = np.expand_dims(neural_data, 0)
         neural_batch.append(torch.from_numpy(batch_ready_neural_data))
 
         if len(neural_batch) == embedding_batch_size:
-            neural_data = torch.cat(neural_batch)
-            neural_data.to(torch.device(device))
-
-            # Model output is shape:
-            # [batch_size, num_patches, output_dim]
-            model_outputs = model(neural_data)
-
-            # Average pooling, can consider other options in the future.
-            pooled_embeddings = torch.mean(model_outputs, dim=1)
-
-            for embedding in pooled_embeddings:
-                neural_embeddings.append(embedding.detach().numpy())
-
+            _generate_neural_embeddings(neural_batch)
             neural_batch = []
+            
+    # Catch any remaining examples.
+    if len(neural_batch) > 0:
+        _generate_neural_embeddings(neural_batch)
+        neural_batch = []
 
     word_embeddings = np.array(word_embeddings)
     neural_embeddings = np.array(neural_embeddings)
@@ -137,7 +189,9 @@ def generate_embedding_dataset(
     return word_embeddings, neural_embeddings
 
 
-def merge_data_configs(encoding_data_config: EncodingDataConfig, ecog_data_config: ECoGDataConfig) -> EncodingDataConfig:
+def merge_data_configs(
+    encoding_data_config: EncodingDataConfig, ecog_data_config: ECoGDataConfig
+) -> EncodingDataConfig:
     """Overwrites fields in encoding_data_config with the fields set in ecog_data_config.
 
     Args:

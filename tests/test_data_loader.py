@@ -107,14 +107,15 @@ def test_data_loader_can_handle_missing_channel(data_loader_creation_fn):
     data_loader = data_loader_creation_fn(config, ch_names, fake_data)
 
     actual_data = data_loader._load_grid_data()
-    assert np.allclose(actual_data[0], np.zeros(100 * FILE_SAMPLING_FREQUENCY))
+    assert np.all(np.isnan(actual_data[0]))
     assert np.allclose(
         actual_data[1:],
         np.ones((63, 100 * FILE_SAMPLING_FREQUENCY)),
     )
+    assert actual_data.dtype == np.float32
         
 
-def test_data_loader_can_handle_durations_not_divisible_by_sample_length(data_loader_creation_fn):
+def test_data_loader_drops_short_signals(data_loader_creation_fn):
     config = ECoGDataConfig(
         batch_size=32, bands=[[4, 8], [8, 13], [13, 30], [30, 55]], new_fs=20, sample_length=1
     )
@@ -122,14 +123,10 @@ def test_data_loader_can_handle_durations_not_divisible_by_sample_length(data_lo
     fake_data = np.ones((65, int(10.5 * FILE_SAMPLING_FREQUENCY)))
     data_loader = data_loader_creation_fn(config, data=fake_data)
 
-    for actual_data in data_loader:
+    for i, _ in enumerate(data_loader):
         pass
-    # Last sample should have 0's padded in.
-    padding = np.zeros((len(config.bands), int(0.5 * config.new_fs), 1, 8, 8))
-    assert np.allclose(
-        actual_data[:, int(0.5 * config.new_fs):, :, :, :],
-        padding,
-    )
+    
+    assert i == 9
 
 def test_data_loader_resets_from_beginning_of_dataset(data_loader_creation_fn):
     config = ECoGDataConfig(

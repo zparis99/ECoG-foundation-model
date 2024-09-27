@@ -14,10 +14,7 @@ from downstream_tasks.encoding.load_signal import EncodingDataset
 from downstream_tasks.encoding.parser import arg_parser
 from downstream_tasks.encoding.config import create_encoding_experiment_config
 from downstream_tasks.encoding.utils import (
-    pearson_correlation,
-    run_regression,
-    generate_embedding_dataset,
-    merge_data_configs,
+    run_encoding_task
 )
 
 
@@ -40,25 +37,7 @@ def main(args):
     model.device = inference_device_name
 
     ecog_data_config = checkpoint["experiment_config"].ecog_data_config
-    encoding_data_config = merge_data_configs(experiment_config.encoding_data_config, ecog_data_config)
-
-    dataset = EncodingDataset(encoding_data_config)
-
-    word_embeddings, neural_embeddings = generate_embedding_dataset(
-        dataset,
-        model,
-        experiment_config.encoding_task_config.embedding_batch_size,
-        inference_device_name,
-    )
-
-    predictions = run_regression(
-        word_embeddings,
-        neural_embeddings,
-        experiment_config.encoding_task_config.num_folds,
-    )
-
-    rp, _, _ = pearson_correlation(neural_embeddings, predictions)
-    mspe = np.square(neural_embeddings - predictions).mean()
+    rp, mspe = run_encoding_task(experiment_config, ecog_data_config, model)
 
     # TODO: Improve metrics used to measure performance of encoding task.
     print("Pearson correlations:", rp)

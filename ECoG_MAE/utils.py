@@ -1,6 +1,5 @@
 import os
 import torch
-import math
 import numpy as np
 import random
 import scipy
@@ -30,6 +29,7 @@ def preprocess_neural_data(
     means: Optional[np.array] = None,
     stds: Optional[np.array] = None,
     pad_before_sample: bool = False,
+    dtype=np.float32
 ) -> np.array:
     """Preprocess and reshape neural data for VideoMAE model.
 
@@ -103,7 +103,8 @@ def preprocess_neural_data(
                 1,
                 8,
                 8,
-            )
+            ),
+            dtype=dtype
         )
         if pad_before_sample:
             preprocessed_signal = np.concatenate((padding, preprocessed_signal), axis=1)

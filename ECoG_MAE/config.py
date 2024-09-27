@@ -1,5 +1,6 @@
+import configparser
 from dataclasses import dataclass, field
-from typing import Optional
+import json
 
 
 # Config classes here are very roughly following the format of Tensorflow Model Garden: https://www.tensorflow.org/guide/model_garden#training_framework
@@ -89,39 +90,47 @@ class VideoMAEExperimentConfig:
 
 
 def create_video_mae_experiment_config(args):
-    """Convert command line arguments to an experiment config for VideoMAE."""
+    """Convert command line arguments and config file to an experiment config for VideoMAE.
+    
+    Config values can be overridden by command line, otherwise use the config file.
+    Boolean values can only be overriden to True as of now, to set a flag False do so in the config file.
+    """
+    config = configparser.ConfigParser(converters={'list': json.loads})
+    config.read(args.config_file)
+    
     return VideoMAEExperimentConfig(
         video_mae_task_config=VideoMAETaskConfig(
             vit_config=ViTConfig(
-                dim=args.dim,
-                mlp_dim=args.mlp_dim,
-                patch_size=args.patch_size,
-                patch_dims=args.patch_dims,
-                frame_patch_size=args.frame_patch_size,
-                use_cls_token=args.use_cls_token,
+                dim=args.dim if args.dim else config.getint("VideoMAETaskConfig.ViTConfig", "dim"),
+                mlp_dim=args.mlp_dim if args.mlp_dim else config.getint("VideoMAETaskConfig.ViTConfig", "mlp_dim"),
+                patch_size=args.patch_size if args.patch_size else config.getint("VideoMAETaskConfig.ViTConfig", "patch_size"),
+                patch_dims=args.patch_dims if args.patch_dims else config.getlist("VideoMAETaskConfig.ViTConfig", "patch_dims"),
+                frame_patch_size=args.frame_patch_size if args.frame_patch_size else config.getint("VideoMAETaskConfig.ViTConfig", "frame_patch_size"),
+                use_cls_token=args.use_cls_token if args.use_cls_token else config.getboolean("VideoMAETaskConfig.ViTConfig", "use_cls_token"),
             ),
-            tube_mask_ratio=args.tube_mask_ratio,
-            decoder_mask_ratio=args.decoder_mask_ratio,
-            use_contrastive_loss=args.use_contrastive_loss,
-            running_cell_masking=args.running_cell_masking,
+            tube_mask_ratio=args.tube_mask_ratio if args.tube_mask_ratio else config.getfloat("VideoMAETaskConfig", "tube_mask_ratio"),
+            decoder_mask_ratio=args.decoder_mask_ratio if args.decoder_mask_ratio else config.getfloat("VideoMAETaskConfig", "decoder_mask_ratio"),
+            use_contrastive_loss=args.use_contrastive_loss if args.use_contrastive_loss else config.getboolean("VideoMAETaskConfig", "use_contrastive_loss"),
+            running_cell_masking=args.running_cell_masking if args.running_cell_masking else config.getboolean("VideoMAETaskConfig", "running_cell_masking"),
         ),
         trainer_config=TrainerConfig(
-            learning_rate=args.learning_rate,
-            num_epochs=args.num_epochs,
-            loss=args.loss,
+            learning_rate=args.learning_rate if args.learning_rate else config.getfloat("TrainerConfig", "learning_rate"),
+            num_epochs=args.num_epochs if args.num_epochs else config.getint("TrainerConfig", "num_epochs"),
+            loss=args.loss if args.loss else config.get("TrainerConfig", "loss"),
         ),
         ecog_data_config=ECoGDataConfig(
-            norm=args.norm,
-            batch_size=args.batch_size,
-            data_size=args.data_size,
-            env=args.env,
-            bands=args.bands,
-            new_fs=args.new_fs,
-            dataset_path=args.dataset_path,
-            train_data_proportion=args.train_data_proportion,
-            sample_length=args.sample_length,
-            shuffle=args.shuffle,
-            test_loader=args.test_loader,
+            norm=args.norm if args.norm else config.get("ECoGDataConfig", "norm"),
+            batch_size=args.batch_size if args.batch_size else config.getint("ECoGDataConfig", "batch_size"),
+            data_size=args.data_size if args.data_size else config.getfloat("ECoGDataConfig", "data_size"),
+            env=args.env if args.env else config.getboolean("ECoGDataConfig", "env"),
+            bands=args.bands if args.bands else config.getlist("ECoGDataConfig", "bands"),
+            original_fs = args.original_fs if args.original_fs else config.getint("ECoGDataConfig", "original_fs"),
+            new_fs=args.new_fs if args.new_fs else config.getint("ECoGDataConfig", "new_fs"),
+            dataset_path=args.dataset_path if args.dataset_path else config.get("ECoGDataConfig", "dataset_path"),
+            train_data_proportion=args.train_data_proportion if args.train_data_proportion else config.getfloat("ECoGDataConfig", "train_data_proportion"),
+            sample_length=args.sample_length if args.sample_length else config.getint("ECoGDataConfig", "sample_length"),
+            shuffle=args.shuffle if args.shuffle else config.getboolean("ECoGDataConfig", "shuffle"),
+            test_loader=args.test_loader if args.test_loader else config.getboolean("ECoGDataConfig", "test_loader"),
         ),
         job_name=args.job_name,
     )
