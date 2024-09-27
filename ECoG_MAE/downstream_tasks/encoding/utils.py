@@ -161,7 +161,7 @@ def generate_embedding_dataset(
 
         if len(neural_batch) == embedding_batch_size:
             neural_data = torch.cat(neural_batch)
-            neural_data.to(torch.device(device))
+            neural_data = neural_data.to(device)
 
             # Model output is shape:
             # [batch_size, num_patches, output_dim]
@@ -171,7 +171,7 @@ def generate_embedding_dataset(
             pooled_embeddings = torch.mean(model_outputs, dim=1)
 
             for embedding in pooled_embeddings:
-                neural_embeddings.append(embedding.detach().numpy())
+                neural_embeddings.append(embedding.detach().cpu().numpy())
 
             neural_batch = []
 
