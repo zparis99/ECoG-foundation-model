@@ -6,10 +6,7 @@ import time as t
 import os
 import mne
 from mne_bids import BIDSPath
-import pyedflib
 from pyedflib import highlevel
-import scipy.signal
-from einops import rearrange
 import torch
 
 from config import ECoGDataConfig, VideoMAEExperimentConfig
