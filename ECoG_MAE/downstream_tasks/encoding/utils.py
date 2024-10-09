@@ -8,6 +8,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression
 import torch
 import torch.nn as nn
+from scipy import stats
 
 from config import ECoGDataConfig
 from downstream_tasks.encoding.config import (
@@ -52,44 +53,48 @@ def run_encoding_task(
         experiment_config.encoding_task_config.num_folds,
     )
 
-    rp, _, _ = pearson_correlation(neural_embeddings, predictions)
+    correlation_metrics = get_correlation_metrics(neural_embeddings, predictions)
     mspe = np.square(neural_embeddings - predictions).mean()
 
-    return rp, mspe
+    return correlation_metrics, mspe
 
 
-def pearson_correlation(groundtruth, predicted):
-    """Get correlation metrics for two sets of data. Here named groundtruth and predicted to align with our usecase.
-
-    Code borrowed with minor alterations from: https://github.com/hassonlab/247-encoding/blob/e0b7468824bc950f15dd8e47f9b7c4bdb3615109/scripts/tfsenc_utils.py#L18
+def get_correlation_metrics(groundtruth, predicted):
+    """
+    Calculate summary correlation metrics for two sets of embeddings.
 
     Args:
-        groundtruth (np.array): shape [num_examples, ]
-        predicted (np.array): [description]
+    groundtruth (np.array): shape [num_embeddings, embedding_dim]
+    predicted (np.array): shape [num_embeddings, embedding_dim]
 
     Returns:
-        [type]: [description]
+    dict: A dictionary containing various correlation metrics
     """
-    df = np.shape(groundtruth)[1] - 2
+    # Flatten the matrices
+    gt_flat = groundtruth.flatten()
+    pred_flat = predicted.flatten()
 
-    groundtruth -= np.mean(groundtruth, axis=1, keepdims=True)
-    predicted -= np.mean(predicted, axis=1, keepdims=True)
+    # Calculate overall Pearson correlation
+    overall_corr, overall_p = stats.pearsonr(gt_flat, pred_flat)
 
-    r = np.sum(groundtruth * predicted, 1) / np.sqrt(
-        np.sum(groundtruth * groundtruth, 1) * np.sum(predicted * predicted, 1)
-    )
+    # Calculate per-dimension correlations
+    dim_corrs = np.array([stats.pearsonr(groundtruth[:, i], predicted[:, i])[0] 
+                          for i in range(groundtruth.shape[1])])
 
-    t = r / (np.sqrt((1 - np.square(r))) / df)
-    p = stats.t.sf(t, df)
+    # Calculate per-embedding correlations
+    emb_corrs = np.array([stats.pearsonr(groundtruth[i, :], predicted[i, :])[0] 
+                          for i in range(groundtruth.shape[0])])
 
-    r = r.squeeze()
-
-    if r.size > 1:
-        r = r.tolist()
-    else:
-        r = float(r)
-
-    return r, p, t
+    return {
+        "overall_correlation": overall_corr,
+        "overall_p_value": overall_p,
+        "dimension_correlation": dim_corrs,
+        "embedding_correlation": emb_corrs,
+        "mean_dimension_correlation": np.mean(dim_corrs),
+        "mean_embedding_correlation": np.mean(emb_corrs),
+        "median_dimension_correlation": np.median(dim_corrs),
+        "median_embedding_correlation": np.median(emb_corrs)
+    }
 
 
 # TODO: Add tests for this.
