@@ -1,4 +1,5 @@
 import torch
+import logging
 import sys
 from parser import arg_parser
 from ecog_setup import system_setup, model_setup
@@ -7,6 +8,11 @@ from loader import dl_setup
 from models import *
 from tests import test_loader, test_model
 from train import train_model
+
+logging.basicConfig(
+    format='%(asctime)s %(levelname)-8s %(message)s',
+    level=logging.INFO,
+    datefmt='%Y-%m-%d %H:%M:%S')
 
 
 def main(args):

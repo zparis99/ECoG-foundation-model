@@ -8,9 +8,12 @@ import mne
 from mne_bids import BIDSPath
 from pyedflib import highlevel
 import torch
+import logging
 
 from config import ECoGDataConfig, VideoMAEExperimentConfig
 from utils import preprocess_neural_data, get_signal_stats
+
+logger = logging.getLogger(__name__)
 
 
 class ECoGDataset(torch.utils.data.IterableDataset):
@@ -39,6 +42,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
     def __iter__(self):
         # Load data into ram on first iteration.
         if self.index == 0:
+            logger.info("-----------------------------------------------------------------------------")
+            logger.info("Reading new file: %s", self.path)
             self.signal = self._load_grid_data()
         # this is to make sure we stop streaming from our dataset after the max number of samples is reached
         while self.index < self.max_samples:

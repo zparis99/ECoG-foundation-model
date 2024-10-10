@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 import time as t
+import logging
 import os
 import torch
 import torch.nn as nn
@@ -14,6 +15,9 @@ from mask import *
 from utils import *
 from metrics import *
 from plot import *
+
+
+logger = logging.getLogger(__name__)
 
 
 def train_model(
@@ -277,6 +281,9 @@ def train_model(
                         seen_recon_signal[:, 4, :, :],
                         seen_target_signal[:, 4, :, :],
                     ).nanmean()
+                if torch.isnan(loss):
+                    logger.error(f"Got nan loss for index {train_i}. Ignoring and continuing...")
+                    continue
 
                 accelerator.backward(loss)
                 optimizer.step()
