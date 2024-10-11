@@ -11,22 +11,25 @@ import torch.nn as nn
 from scipy import stats
 
 from config import ECoGDataConfig
-from downstream_tasks.encoding.config import (
-    EncodingDataConfig,
-    EncodingExperimentConfig,
+from downstream_tasks.encoding_decoding.config import (
+    EncodingDecodingDataConfig,
+    EncodingDecodingExperimentConfig,
 )
-from downstream_tasks.encoding.load_signal import EncodingDataset
+from downstream_tasks.encoding_decoding.load_signal import EncodingDecodingDataset
 
 
 def run_encoding_task(
-    experiment_config: EncodingExperimentConfig,
+    experiment_config: EncodingDecodingExperimentConfig,
     ecog_data_config: ECoGDataConfig,
     model,
 ):
     """Run encoding task between word embeddings and neural embeddings.
+    
+    As of right now these encoding and decoding can use practically the same code. If they start to diverge too much though we
+    can split them up more.
 
     Args:
-        experiment_config (EncodingExperimentConfig): Config for encoding.
+        experiment_config (EncodingDecodingExperimentConfig): Config for encoding.
         ecog_data_config (ECoGDataConfig): Config for processing data. Should be from model checkpoint.
         model (nn.Module): Callable model on neural data for generating embeddings. Currently just SimpleViT
         inference_device_name (str): Device to run encoding on (i.e. cpu, cuda, etc)
@@ -38,7 +41,7 @@ def run_encoding_task(
         experiment_config.encoding_data_config, ecog_data_config
     )
 
-    dataset = EncodingDataset(encoding_data_config)
+    dataset = EncodingDecodingDataset(encoding_data_config)
 
     word_embeddings, neural_embeddings = generate_embedding_dataset(
         dataset,
@@ -55,6 +58,51 @@ def run_encoding_task(
 
     correlation_metrics = get_correlation_metrics(neural_embeddings, predictions)
     mspe = np.square(neural_embeddings - predictions).mean()
+
+    return correlation_metrics, mspe
+
+
+def run_decoding_task(
+    experiment_config: EncodingDecodingExperimentConfig,
+    ecog_data_config: ECoGDataConfig,
+    model,
+):
+    """Run decoding task between neural embeddings and word embeddings.
+    
+    As of right now these encoding and decoding can use practically the same code. If they start to diverge too much though we
+    can split them up more.
+
+    Args:
+        experiment_config (EncodingDecodingExperimentConfig): Config for encoding.
+        ecog_data_config (ECoGDataConfig): Config for processing data. Should be from model checkpoint.
+        model (nn.Module): Callable model on neural data for generating embeddings. Currently just SimpleViT
+        inference_device_name (str): Device to run encoding on (i.e. cpu, cuda, etc)
+
+    Returns:
+        tuple[np.array, np.array]: (pearson correlations, mean squared prediction error)
+    """
+    encoding_data_config = merge_data_configs(
+        experiment_config.encoding_data_config, ecog_data_config
+    )
+
+    dataset = EncodingDecodingDataset(encoding_data_config)
+
+    word_embeddings, neural_embeddings = generate_embedding_dataset(
+        dataset,
+        model,
+        experiment_config.encoding_task_config.embedding_batch_size,
+        experiment_config.encoding_task_config.embedding_device,
+    )
+    
+    # Only change as of now is the order of regression.
+    predictions = run_regression(
+        neural_embeddings,
+        word_embeddings,
+        experiment_config.encoding_task_config.num_folds,
+    )
+
+    correlation_metrics = get_correlation_metrics(word_embeddings, predictions)
+    mspe = np.square(word_embeddings - predictions).mean()
 
     return correlation_metrics, mspe
 
@@ -136,12 +184,12 @@ def run_regression(X: np.array, Y: np.array, num_folds: int) -> np.array:
 
 # TODO: Add tests for this.
 def generate_embedding_dataset(
-    dataset: EncodingDataset, model: nn.Module, embedding_batch_size: int, device: str
+    dataset: EncodingDecodingDataset, model: nn.Module, embedding_batch_size: int, device: str
 ) -> tuple[np.array, np.array]:
     """Gathers word embeddings and generates neural embeddings using model from the dataset.
 
     Args:
-        dataset (EncodingDataset): dataset used to gather word and neural data.
+        dataset (EncodingDecodingDataset): dataset used to gather word and neural data.
         model (nn.Module): model used to generate neural embeddings. Expected as of now to output embeddings of shape
             [batch_size, num_tokens, output_dim] where num_tokens is the number of patches for the VideoMAE model, although different
             models could be plugged in here as well. Embeddings are joined together using average pooling to form one summary embedding.
@@ -195,16 +243,16 @@ def generate_embedding_dataset(
 
 
 def merge_data_configs(
-    encoding_data_config: EncodingDataConfig, ecog_data_config: ECoGDataConfig
-) -> EncodingDataConfig:
+    encoding_data_config: EncodingDecodingDataConfig, ecog_data_config: ECoGDataConfig
+) -> EncodingDecodingDataConfig:
     """Overwrites fields in encoding_data_config with the fields set in ecog_data_config.
 
     Args:
-        encoding_data_config (EncodingDataConfig): encoding data config which will have fields overwritten.
+        encoding_data_config (EncodingDecodingDataConfig): encoding data config which will have fields overwritten.
         ecog_data_config (ECoGDataConfig): ecog data config which contains field to overwrite in encoding_data_config
 
     Returns:
-        EncodingDataConfig: config with ECoGDataConfig fields overwritten other than original_fs
+        EncodingDecodingDataConfig: config with ECoGDataConfig fields overwritten other than original_fs
     """
     # Maintain original_fs from encoding_config because it could be different than the one for pretraining.
     encoding_original_fs = encoding_data_config.original_fs
