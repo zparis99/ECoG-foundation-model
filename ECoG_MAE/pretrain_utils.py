@@ -4,6 +4,9 @@ from utils import *
 from metrics import *
 from plot import *
 
+import mae_st_util.misc as misc
+from mae_st_util.logging import master_print as print
+
 
 def forward_model(model, device, config, num_patches, num_frames, mse):
     # TODO: Actually move this code into model.
@@ -112,10 +115,29 @@ def forward_model(model, device, config, num_patches, num_frames, mse):
     return loss, seen_loss
 
 
-def train_single_epoch(train_dl, accelerator, optimizer, device, model, config, num_patches, num_frames, logger, mse):
+def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, config, num_patches, num_frames, logger, mse):
     model.train()
     
-    for train_i, batch in enumerate(train_dl):
+    metric_logger = misc.MetricLogger(delimiter="  ")
+    metric_logger.add_meter("lr", misc.SmoothedValue(window_size=1, fmt="{value:.6f}"))
+    metric_logger.add_meter(
+        "cpu_mem", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
+    )
+    metric_logger.add_meter(
+        "cpu_mem_all", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
+    )
+    metric_logger.add_meter(
+        "gpu_mem", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
+    )
+    metric_logger.add_meter(
+        "mask_ratio", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
+    )
+    header = "Epoch: [{}]".format(epoch)
+    print_freq = 20
+    
+    for train_i, batch in enumerate(
+        metric_logger.log_every(train_dl, print_freq, header)
+    ):
         optimizer.zero_grad()
 
         signal = batch.to(device)
@@ -132,9 +154,19 @@ def train_single_epoch(train_dl, accelerator, optimizer, device, model, config, 
         if torch.isnan(loss):
             logger.error(f"Got nan loss for index {train_i}. Ignoring and continuing...")
             continue
-
+        
         accelerator.backward(loss)
         optimizer.step()
+        
+        loss_value = loss.item()
+        
+        metric_logger.update(loss=loss_value)
+        metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
+        metric_logger.update(cpu_mem_all=misc.cpu_mem_usage()[1])
+        metric_logger.update(gpu_mem=misc.gpu_mem_usage())
+
+        lr = optimizer.param_groups[0]["lr"]
+        metric_logger.update(lr=lr)
         
 
 def test_single_epoch(test_dl, device, model, config, num_patches, num_frames, logger, mse):
@@ -153,5 +185,5 @@ def test_single_epoch(test_dl, device, model, config, num_patches, num_frames, l
 
             loss, _ = forward_model(model, device, config, num_patches, num_frames, mse)
             if torch.isnan(loss):
-                logger.error(f"Got nan loss for index {train_i}. Ignoring and continuing...")
+                logger.error(f"Got nan loss for index {test_i}. Ignoring and continuing...")
                 continue

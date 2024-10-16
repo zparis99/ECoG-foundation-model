@@ -63,22 +63,17 @@ def train_model(
 
     mse = nn.MSELoss(reduction='none')
 
-    progress_bar = tqdm(
-        range(epoch, config.trainer_config.num_epochs),
-        ncols=1200,
-        disable=(local_rank != 0),
-    )
-    for epoch in progress_bar:
+    for epoch in range(config.trainer_config.num_epochs):
         start = t.time()
         with torch.cuda.amp.autocast(dtype=data_type):
             model.train()
-            train_single_epoch(train_dl, accelerator, optimizer, device, model, config, num_patches, num_frames, logger, mse)
+            train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, config, num_patches, num_frames, logger, mse)
 
             test_single_epoch(test_dl, device, model, config, num_patches, num_frames, logger, mse)
 
             end = t.time()
 
-            print("Epoch " + str(epoch) + " done. Time elapsed: " + str(end - start))
+            logger.info("Epoch " + str(epoch) + " done. Time elapsed: " + str(end - start))
 
         # save model checkpoints
         checkpoint = {
