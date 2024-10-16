@@ -65,6 +65,13 @@ class ViTConfig:
 
 
 @dataclass
+class LoggingConfig:
+    # Directory to write logs to (i.e. tensorboard events, etc).
+    event_log_dir: str = "event_logs/"
+    # Number of steps to print training progress after.
+    print_freq: int = 20
+
+@dataclass
 class VideoMAETaskConfig:
     # Config for model.
     vit_config: ViTConfig = field(default_factory=ViTConfig)
@@ -85,6 +92,7 @@ class VideoMAEExperimentConfig:
     )
     ecog_data_config: ECoGDataConfig = field(default_factory=ECoGDataConfig)
     trainer_config: TrainerConfig = field(default_factory=TrainerConfig)
+    logging_config: LoggingConfig = field(default_factory=LoggingConfig)
     # Name of training job. Will be used to save metrics.
     job_name: str = None
 
@@ -131,6 +139,10 @@ def create_video_mae_experiment_config(args):
             sample_length=args.sample_length if args.sample_length else config.getint("ECoGDataConfig", "sample_length"),
             shuffle=args.shuffle if args.shuffle else config.getboolean("ECoGDataConfig", "shuffle"),
             test_loader=args.test_loader if args.test_loader else config.getboolean("ECoGDataConfig", "test_loader"),
+        ),
+        logging_config=LoggingConfig(
+            event_log_dir=args.event_log_dir if args.event_log_dir else config.get("LoggingConfig", "event_log_dir"),
+            print_freq=args.print_freq if args.print_freq else config.getint("LoggingConfig", "print_freq"),
         ),
         job_name=args.job_name,
     )

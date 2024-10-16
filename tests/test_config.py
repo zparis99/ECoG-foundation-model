@@ -35,6 +35,10 @@ CONFIG_VALUES = {
         "shuffle": False,
         "test_loader": False,
     },
+    "LoggingConfig": {
+        "event_log_dir": "test_logging_dir/",
+        "print_freq": 30,
+    },
     "TrainerConfig": {
         "learning_rate": 0.0,
         "num_epochs": 10,
@@ -76,6 +80,8 @@ def test_config_file_loads_unchanged_without_command_line_args(mocker, fake_conf
                 actual_config_dict = asdict(experiment_config.ecog_data_config)
             if section == "TrainerConfig":
                 actual_config_dict = asdict(experiment_config.trainer_config)
+            if section == "LoggingConfig":
+                actual_config_dict = asdict(experiment_config.logging_config)
                 
             assert actual_config_dict[field] == value
             
@@ -106,7 +112,9 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
         "test_loader": True,
         "learning_rate": 0.001,
         "num_epochs": 11,
-        "loss": "segment"
+        "loss": "segment",
+        "event_log_dir": "new_dir/",
+        "print_freq": 100,
     }
     
     # Convert to list which can be passed into sys.argv
@@ -151,5 +159,7 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
                 actual_config_dict = asdict(experiment_config.ecog_data_config)
             if section == "TrainerConfig":
                 actual_config_dict = asdict(experiment_config.trainer_config)
+            if section == "LoggingConfig":
+                actual_config_dict = asdict(experiment_config.logging_config)
                 
             assert actual_config_dict[field] == command_line_args[field], f"For field {field} expected: {command_line_args[field]} actual: {actual_config_dict[field]}"

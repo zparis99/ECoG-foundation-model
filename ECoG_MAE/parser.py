@@ -48,6 +48,16 @@ def arg_parser():
         type=float,
         help="Percentage of data to assign to train split. All remaining data is assigned to test split.",
     )
+    parser.add_argument(
+        "--event-log-dir",
+        type=str,
+        help="Directory to write training logs to (i.e. tensorboard logs)",
+    )
+    parser.add_argument(
+        "--print-freq",
+        type=int,
+        help="Number of steps to print training progress after.",
+    )
     args = parser.parse_args()
 
     # parse string input to list of lists
