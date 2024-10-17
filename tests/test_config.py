@@ -3,7 +3,8 @@ from dataclasses import asdict
 import os
 import pytest
 
-from config import (create_video_mae_experiment_config, 
+from config import (create_video_mae_experiment_config,
+                    create_video_mae_experiment_config_from_file,
                     VideoMAEExperimentConfig,
                     VideoMAETaskConfig,
                     ViTConfig,
@@ -63,6 +64,27 @@ def fake_config_path(tmp_path):
         config.write(fp)
     
     return path
+
+
+def test_create_video_mae_experiment_config_from_file(fake_config_path):
+    experiment_config = create_video_mae_experiment_config_from_file(fake_config_path)
+    
+    # Make sure all experiment config values match config file
+    for section in CONFIG_VALUES.keys():
+        for field, value in CONFIG_VALUES[section].items():
+            if section == "VideoMAETaskConfig.ViTConfig":
+                actual_config_dict = asdict(experiment_config.video_mae_task_config.vit_config)
+            if section == "VideoMAETaskConfig":
+                actual_config_dict = asdict(experiment_config.video_mae_task_config)
+            if section == "ECoGDataConfig":
+                actual_config_dict = asdict(experiment_config.ecog_data_config)
+            if section == "TrainerConfig":
+                actual_config_dict = asdict(experiment_config.trainer_config)
+            if section == "LoggingConfig":
+                actual_config_dict = asdict(experiment_config.logging_config)
+                
+            assert actual_config_dict[field] == value
+            
 
 def test_config_file_loads_unchanged_without_command_line_args(mocker, fake_config_path):
     mocker.patch(

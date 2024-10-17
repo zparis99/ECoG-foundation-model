@@ -1,6 +1,7 @@
 import configparser
 from dataclasses import dataclass, field, asdict
 import json
+from argparse import Namespace
 
 
 # Config classes here are very roughly following the format of Tensorflow Model Garden: https://www.tensorflow.org/guide/model_garden#training_framework
@@ -97,11 +98,26 @@ class VideoMAEExperimentConfig:
     job_name: str = None
 
 
-def create_video_mae_experiment_config(args):
+def create_video_mae_experiment_config_from_file(config_file_path):
+    """Convert config file to an experiment config for VideoMAE."""
+    # Create fake args which will not error on attribute miss so we can reuse existing function.
+    class FakeArgs:
+        def __init__(self):
+            self.config_file = config_file_path
+        
+        def __getattr__(self, item):
+            return None
+        
+    return create_video_mae_experiment_config(FakeArgs())
+
+
+def create_video_mae_experiment_config(args: Namespace | str):
     """Convert command line arguments and config file to an experiment config for VideoMAE.
     
     Config values can be overridden by command line, otherwise use the config file.
     Boolean values can only be overriden to True as of now, to set a flag False do so in the config file.
+    
+    Can optionally pass 
     """
     config = configparser.ConfigParser(converters={'list': json.loads})
     config.read(args.config_file)
