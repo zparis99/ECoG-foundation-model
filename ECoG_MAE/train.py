@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
-from config import VideoMAEExperimentConfig
+from config import VideoMAEExperimentConfig, write_config_file
 from pretrain_utils import train_single_epoch, test_single_epoch
 
 
@@ -58,9 +58,14 @@ def train_model(
         )
         
     os.makedirs(config.logging_config.event_log_dir, exist_ok=True)
-    log_writer = SummaryWriter(log_dir=config.logging_config.event_log_dir)
+    # TODO: Make this less likely to cause accidental overwrites.
+    log_writer = SummaryWriter(log_dir=os.path.join(config.logging_config.event_log_dir, config.job_name))
+    checkpoint_dir = os.path.join(os.getcwd(), "checkpoints", config.job_name)
+    if not os.path.exists(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
+    write_config_file(os.path.join(checkpoint_dir, "experiment_config.ini"), config)
 
-    mse = nn.MSELoss(reduction='none')
+    mse = nn.MSELoss()
 
     for epoch in range(config.trainer_config.num_epochs):
         start = t.time()
@@ -81,5 +86,8 @@ def train_model(
             "optimizer": optimizer.state_dict(),
             "lr_scheduler": lr_scheduler.state_dict(),
         }
+            
+        # Save a different checkpoint for every epoch.
+        torch.save(checkpoint, os.path.join(checkpoint_dir, f"{epoch}_checkpoint.pth"))
 
     return model
