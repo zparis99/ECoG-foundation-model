@@ -80,7 +80,6 @@ def train_model(
             "model": model,
             "optimizer": optimizer.state_dict(),
             "lr_scheduler": lr_scheduler.state_dict(),
-            "experiment_config": config,
         }
 
     return model

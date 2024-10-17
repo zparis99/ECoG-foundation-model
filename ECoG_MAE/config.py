@@ -1,5 +1,5 @@
 import configparser
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 import json
 
 
@@ -144,5 +144,32 @@ def create_video_mae_experiment_config(args):
             event_log_dir=args.event_log_dir if args.event_log_dir else config.get("LoggingConfig", "event_log_dir"),
             print_freq=args.print_freq if args.print_freq else config.getint("LoggingConfig", "print_freq"),
         ),
-        job_name=args.job_name,
+        job_name=args.job_name if args.job_name else config.get("JobDetails", "job_name", fallback="train-job"),
     )
+
+
+def write_config_file(path: str, experiment_config: VideoMAEExperimentConfig):
+    """Writes config to path as a .ini file.
+    
+    Args:
+        path (str): path to write file to.
+        experiment_config (VideoMAEExperimentConfig): Config to write in .ini format.
+    """
+    config = configparser.ConfigParser()
+
+    def add_section(section_name, data):
+        config[section_name] = {}
+        for key, value in data.items():
+            config[section_name][key] = str(value)
+
+    add_section("VideoMAETaskConfig.ViTConfig", asdict(experiment_config.video_mae_task_config.vit_config))
+    video_mae_task_config = {k: v for k, v in asdict(experiment_config.video_mae_task_config).items() if k != 'vit_config'}
+    add_section("VideoMAETaskConfig", video_mae_task_config)
+    add_section("ECoGDataConfig", asdict(experiment_config.ecog_data_config))
+    add_section("LoggingConfig", asdict(experiment_config.logging_config))
+    add_section("TrainerConfig", asdict(experiment_config.trainer_config))
+    config["JobDetails"] = {"job_name": experiment_config.job_name}
+
+    # Write the configuration to the file
+    with open(path, 'w') as configfile:
+        config.write(configfile)
