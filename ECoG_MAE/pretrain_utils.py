@@ -115,7 +115,7 @@ def forward_model(model, device, config, num_patches, num_frames, mse):
     return loss, seen_loss
 
 
-def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, config, num_patches, num_frames, logger, mse):
+def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, config, num_patches, num_frames, logger, mse, log_writer=None):
     model.train()
     
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -168,8 +168,22 @@ def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, c
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
         
+        if log_writer is not None:
+            """We use epoch_1000x as the x-axis in tensorboard.
+            This calibrates different curves when batch size changes.
+            """
+            epoch_1000x = int(
+                (train_i / len(train_dl) + epoch) * 1000
+            )
+            log_writer.add_scalar("train_loss", loss_value, epoch_1000x)
+            log_writer.add_scalar("lr", lr, epoch_1000x)
+            
+    metric_logger.synchronize_between_processes()
+    print("Averaged stats:", metric_logger)
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+        
 
-def test_single_epoch(test_dl, device, model, config, num_patches, num_frames, logger, mse):
+def test_single_epoch(test_dl, epoch, device, model, config, num_patches, num_frames, logger, mse, log_writer=None):
     model.eval()
     with torch.no_grad():
         for test_i, batch in enumerate(test_dl):
@@ -187,3 +201,14 @@ def test_single_epoch(test_dl, device, model, config, num_patches, num_frames, l
             if torch.isnan(loss):
                 logger.error(f"Got nan loss for index {test_i}. Ignoring and continuing...")
                 continue
+            
+            loss_value = loss.item()
+            
+            if log_writer is not None:
+                    """We use epoch_1000x as the x-axis in tensorboard.
+                    This calibrates different curves when batch size changes.
+                    """
+                    epoch_1000x = int(
+                        (test_i / len(test_dl) + epoch) * 1000
+                    )
+                    log_writer.add_scalar("test_loss", loss_value, epoch_1000x)

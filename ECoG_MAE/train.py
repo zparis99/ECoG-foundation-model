@@ -1,14 +1,10 @@
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 import multiprocessing as mp
 import time as t
 import logging
 import os
 import torch
 import torch.nn as nn
-from einops import rearrange
-from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 from config import VideoMAEExperimentConfig
 from pretrain_utils import train_single_epoch, test_single_epoch
@@ -60,6 +56,9 @@ def train_model(
         model, optimizer, train_dl, lr_scheduler = accelerator.prepare(
             model, optimizer, train_dl, lr_scheduler
         )
+        
+    os.makedirs(config.logging_config.event_log_dir, exist_ok=True)
+    log_writer = SummaryWriter(log_dir=config.logging_config.event_log_dir)
 
     mse = nn.MSELoss(reduction='none')
 
@@ -67,7 +66,7 @@ def train_model(
         start = t.time()
         with torch.cuda.amp.autocast(dtype=data_type):
             model.train()
-            train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, config, num_patches, num_frames, logger, mse)
+            train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, config, num_patches, num_frames, logger, mse, log_writer=log_writer)
 
             test_single_epoch(test_dl, device, model, config, num_patches, num_frames, logger, mse)
 
