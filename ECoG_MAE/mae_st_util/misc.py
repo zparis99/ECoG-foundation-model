@@ -15,10 +15,9 @@ import time
 from collections import defaultdict, deque
 
 import psutil
-import mae_st.util.logging as logging
+import mae_st_util.logging as logging
 import torch
 import torch.distributed as dist
-import torch.fb.rendezvous.zeus
 from mae_st_util.logging import master_print as print
 
 
@@ -58,27 +57,40 @@ class SmoothedValue:
 
     @property
     def median(self):
+        if self.count == 0:
+            return None
         d = torch.tensor(list(self.deque))
         return d.median().item()
 
     @property
     def avg(self):
+        if self.count == 0:
+            return None
         d = torch.tensor(list(self.deque), dtype=torch.float32)
         return d.mean().item()
 
     @property
     def global_avg(self):
+        if self.count == 0:
+            return None
         return self.total / self.count
 
     @property
     def max(self):
+        if self.count == 0:
+            return None
         return max(self.deque)
 
     @property
     def value(self):
+        if self.count == 0:
+            return None
         return self.deque[-1]
 
     def __str__(self):
+        if self.count == 0:
+            return "empty metric"
+        
         return self.fmt.format(
             median=self.median,
             avg=self.avg,

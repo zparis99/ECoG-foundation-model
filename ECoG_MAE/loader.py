@@ -40,7 +40,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.index = 0
     
     def __len__(self):
-        return self.max_samples
+        return int(self.max_samples)
 
     def __iter__(self):
         # Load data into ram on first iteration.
