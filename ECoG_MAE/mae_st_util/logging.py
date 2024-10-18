@@ -15,7 +15,6 @@ import sys
 import simplejson
 import torch
 import torch.distributed as dist
-from iopath.common.file_io import g_pathmgr as pathmgr
 
 
 def is_master_proc(multinode=False):
@@ -45,7 +44,7 @@ def _suppress_print():
 @functools.lru_cache(maxsize=None)
 def _cached_log_stream(filename):
     # Use 1K buffer if writing to cloud storage.
-    io = pathmgr.open(filename, "a", buffering=1024 if "://" in filename else -1)
+    io = open(filename, "a")
     atexit.register(io.close)
     return io
 
