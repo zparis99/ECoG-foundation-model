@@ -45,8 +45,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
     def __iter__(self):
         # Load data into ram on first iteration.
         if self.index == 0:
-            logger.info("-----------------------------------------------------------------------------")
-            logger.info("Reading new file: %s", self.path)
+            logger.debug("-----------------------------------------------------------------------------")
+            logger.debug("Reading new file: %s", self.path)
             self.signal = self._load_grid_data()
         # this is to make sure we stop streaming from our dataset after the max number of samples is reached
         while self.index < self.max_samples:
