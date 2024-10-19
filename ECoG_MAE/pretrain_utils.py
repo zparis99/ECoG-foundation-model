@@ -129,9 +129,6 @@ def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, c
     metric_logger.add_meter(
         "gpu_mem", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
     )
-    metric_logger.add_meter(
-        "mask_ratio", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
-    )
     header = "Epoch: [{}]".format(epoch)
     print_freq = 20
     
