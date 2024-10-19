@@ -150,7 +150,7 @@ def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, c
             )
 
         # mask indicating positions of channels that were rejected during preprocessing
-        loss, _ = forward_model(signal, model, device, config, num_patches, num_frames, mse)
+        loss, seen_loss = forward_model(signal, model, device, config, num_patches, num_frames, mse)
         if torch.isnan(loss):
             logger.error(f"Got nan loss for index {train_i}. Ignoring and continuing...")
             continue
@@ -159,6 +159,7 @@ def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, c
         optimizer.step()
         
         loss_value = loss.item()
+        seen_loss_value = seen_loss.item()
         
         metric_logger.update(loss=loss_value)
         metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
@@ -175,7 +176,8 @@ def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, c
             epoch_1000x = int(
                 (train_i / len(train_dl) + epoch) * 1000
             )
-            log_writer.add_scalar("train_loss", loss_value, epoch_1000x)
+            log_writer.add_scalar("loss/train", loss_value, epoch_1000x)
+            log_writer.add_scalar("loss/train_seen", seen_loss_value, epoch_1000x)
             log_writer.add_scalar("lr", lr, epoch_1000x)
             
     metric_logger.synchronize_between_processes()
@@ -197,12 +199,13 @@ def test_single_epoch(test_dl, epoch, device, model, config, num_patches, num_fr
                     signal == 0, torch.tensor(float("nan")), signal
                 )
 
-            loss, _ = forward_model(signal, model, device, config, num_patches, num_frames, mse)
+            loss, seen_loss = forward_model(signal, model, device, config, num_patches, num_frames, mse)
             if torch.isnan(loss):
                 logger.error(f"Got nan loss for index {test_i}. Ignoring and continuing...")
                 continue
             
             loss_value = loss.item()
+            seen_loss_value = seen_loss.item()
             
             if log_writer is not None:
                     """We use epoch_1000x as the x-axis in tensorboard.
@@ -211,4 +214,5 @@ def test_single_epoch(test_dl, epoch, device, model, config, num_patches, num_fr
                     epoch_1000x = int(
                         (test_i / len(test_dl) + epoch) * 1000
                     )
-                    log_writer.add_scalar("test_loss", loss_value, epoch_1000x)
+                    log_writer.add_scalar("loss/test", loss_value, epoch_1000x)
+                    log_writer.add_scalar("loss/test_seen", seen_loss_value, epoch_1000x)
