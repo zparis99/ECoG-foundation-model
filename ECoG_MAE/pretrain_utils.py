@@ -130,10 +130,9 @@ def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, c
         "gpu_mem", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
     )
     header = "Epoch: [{}]".format(epoch)
-    print_freq = 20
     
     for train_i, batch in enumerate(
-        metric_logger.log_every(train_dl, print_freq, header)
+        metric_logger.log_every(train_dl, config.logging_config.print_freq, header)
     ):
         optimizer.zero_grad()
 
