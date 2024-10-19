@@ -71,7 +71,19 @@ def train_model(
         start = t.time()
         with torch.cuda.amp.autocast(dtype=data_type):
             model.train()
-            train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, config, num_patches, num_frames, logger, mse, log_writer=log_writer)
+            train_single_epoch(train_dl,
+                               epoch,
+                               accelerator,
+                               optimizer,
+                               lr_scheduler,
+                               device,
+                               model,
+                               config,
+                               num_patches,
+                               num_frames,
+                               logger,
+                               mse,
+                               log_writer=log_writer)
 
             test_single_epoch(test_dl, device, model, config, num_patches, num_frames, logger, mse)
 

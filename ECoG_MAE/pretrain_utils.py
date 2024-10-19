@@ -1,8 +1,11 @@
 import torch
+from torch.utils.data import DataLoader
 from mask import *
 from utils import *
 from metrics import *
 from plot import *
+from models import SimpleViT
+from config import VideoMAEExperimentConfig
 
 import mae_st_util.misc as misc
 from mae_st_util.logging import master_print as print
@@ -115,7 +118,19 @@ def forward_model(signal, model, device, config, num_patches, num_frames, mse):
     return loss, seen_loss
 
 
-def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, config, num_patches, num_frames, logger, mse, log_writer=None):
+def train_single_epoch(train_dl: DataLoader,
+                       epoch: int,
+                       accelerator,
+                       optimizer,
+                       lr_scheduler,
+                       device: str,
+                       model: SimpleViT,
+                       config: VideoMAEExperimentConfig,
+                       num_patches: int,
+                       num_frames: int,
+                       logger,
+                       mse,
+                       log_writer=None):
     model.train()
     
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -153,6 +168,7 @@ def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, c
         
         accelerator.backward(loss)
         optimizer.step()
+        lr_scheduler.step()
         
         loss_value = loss.item()
         seen_loss_value = seen_loss.item()
@@ -181,7 +197,16 @@ def train_single_epoch(train_dl, epoch, accelerator, optimizer, device, model, c
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
         
 
-def test_single_epoch(test_dl, epoch, device, model, config, num_patches, num_frames, logger, mse, log_writer=None):
+def test_single_epoch(test_dl: DataLoader,
+                      epoch: int,
+                      device: str,
+                      model: SimpleViT,
+                      config: VideoMAEExperimentConfig,
+                      num_patches: int,
+                      num_frames: int,
+                      logger,
+                      mse,
+                      log_writer=None):
     model.eval()
     with torch.no_grad():
         for test_i, batch in enumerate(test_dl):
