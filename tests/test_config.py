@@ -49,7 +49,7 @@ CONFIG_VALUES = {
         "print_freq": 30,
     },
     "TrainerConfig": {
-        "learning_rate": 0.0,
+        "max_learning_rate": 0.0,
         "num_epochs": 10,
         "loss": "patch",
     },
@@ -143,7 +143,7 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
         "sample_length": 3,
         "shuffle": True,
         "test_loader": True,
-        "learning_rate": 0.001,
+        "max_learning_rate": 0.001,
         "num_epochs": 11,
         "loss": "segment",
         "event_log_dir": "new_dir/",
@@ -229,7 +229,7 @@ def test_write_config_file(mocker, tmp_path):
             test_loader=False
         ),
         trainer_config=TrainerConfig(
-            learning_rate=0.0,
+            max_learning_rate=0.0,
             num_epochs=10,
             loss="patch"
         ),
@@ -296,7 +296,7 @@ def test_write_config_file(mocker, tmp_path):
 
     # Check TrainerConfig section
     trainer_config = config["TrainerConfig"]
-    assert trainer_config["learning_rate"] == "0.0"
+    assert trainer_config["max_learning_rate"] == "0.0"
     assert trainer_config["num_epochs"] == "10"
     assert trainer_config["loss"] == "patch"
     

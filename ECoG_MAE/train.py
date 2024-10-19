@@ -52,10 +52,10 @@ def train_model(
 
     num_frames = config.ecog_data_config.sample_length * config.ecog_data_config.new_fs
 
-    if config.trainer_config.learning_rate == None:
-        model, optimizer, train_dl, lr_scheduler = accelerator.prepare(
-            model, optimizer, train_dl, lr_scheduler
-        )
+    # if config.trainer_config.learning_rate == None:
+    #     model, optimizer, train_dl, lr_scheduler = accelerator.prepare(
+    #         model, optimizer, train_dl, lr_scheduler
+    #     )
         
     os.makedirs(config.logging_config.event_log_dir, exist_ok=True)
     # TODO: Make this less likely to cause accidental overwrites.

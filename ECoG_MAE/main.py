@@ -1,4 +1,3 @@
-import torch
 import logging
 import sys
 from parser import arg_parser

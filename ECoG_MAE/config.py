@@ -40,8 +40,8 @@ class ECoGDataConfig:
 
 @dataclass
 class TrainerConfig:
-    # Learning rate for training. If 0 then uses Adam scheduler.
-    learning_rate: float = 0.0
+    # Max learning rate for scheduler.
+    max_learning_rate: float = 3e-5
     # Number of epochs to train over data.
     num_epochs: int = 10
     # Type of loss to use.
@@ -138,7 +138,7 @@ def create_video_mae_experiment_config(args: Namespace | str):
             running_cell_masking=args.running_cell_masking if args.running_cell_masking else config.getboolean("VideoMAETaskConfig", "running_cell_masking"),
         ),
         trainer_config=TrainerConfig(
-            learning_rate=args.learning_rate if args.learning_rate else config.getfloat("TrainerConfig", "learning_rate"),
+            max_learning_rate=args.max_learning_rate if args.max_learning_rate else config.getfloat("TrainerConfig", "max_learning_rate"),
             num_epochs=args.num_epochs if args.num_epochs else config.getint("TrainerConfig", "num_epochs"),
             loss=args.loss if args.loss else config.get("TrainerConfig", "loss"),
         ),
