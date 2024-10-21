@@ -43,7 +43,7 @@ def test_encoder_forward_with_mask_succeeds(model):
     
     fake_batch = torch.nan_to_num(fake_batch)
     
-    encoder_out = model(fake_batch, encoder_mask=padding_mask, tube_padding_mask=tube_mask)
+    encoder_out = model(fake_batch, encoder_mask=tube_mask, tube_padding_mask=padding_mask)
     
     num_patches = FRAMES_PER_SAMPLE * constants.GRID_HEIGHT * constants.GRID_WIDTH // FRAME_PATCH_SIZE
     num_patches_per_channel = FRAMES_PER_SAMPLE // FRAME_PATCH_SIZE
@@ -61,12 +61,12 @@ def test_decoder_forward_with_no_decoder_masking_succeeds(model):
     
     fake_batch = torch.nan_to_num(fake_batch)
     
-    encoder_out = model(fake_batch, encoder_mask=padding_mask, tube_padding_mask=tube_mask)
+    encoder_out = model(fake_batch, encoder_mask=tube_mask, tube_padding_mask=padding_mask)
     
     decoder_mask = get_decoder_mask(0., tube_mask, "cpu")
     decoder_padding_mask = padding_mask[decoder_mask]
     
-    decoder_out = model(encoder_out, tube_padding_mask=tube_mask, decoder_mask=decoder_mask,
+    decoder_out = model(encoder_out, encoder_mask=tube_mask, decoder_mask=decoder_mask,
         decoder_padding_mask=decoder_padding_mask)
     
     num_patches = FRAMES_PER_SAMPLE * constants.GRID_HEIGHT * constants.GRID_WIDTH // FRAME_PATCH_SIZE
@@ -85,12 +85,12 @@ def test_decoder_forward_with_decoder_masking_succeeds(model):
     
     fake_batch = torch.nan_to_num(fake_batch)
     
-    encoder_out = model(fake_batch, encoder_mask=padding_mask, tube_padding_mask=tube_mask)
+    encoder_out = model(fake_batch, encoder_mask=tube_mask, tube_padding_mask=padding_mask)
     
     decoder_mask = get_decoder_mask(0.5, tube_mask, "cpu")
     decoder_padding_mask = padding_mask[decoder_mask]
     
-    decoder_out = model(encoder_out, tube_padding_mask=tube_mask, decoder_mask=decoder_mask,
+    decoder_out = model(encoder_out, encoder_mask=tube_mask, decoder_mask=decoder_mask,
         decoder_padding_mask=decoder_padding_mask)
     
     num_patches = FRAMES_PER_SAMPLE * constants.GRID_HEIGHT * constants.GRID_WIDTH // FRAME_PATCH_SIZE

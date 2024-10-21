@@ -369,7 +369,7 @@ class SimpleViT(nn.Module):
                 x = x + self.posemb_sincos_4d.to(x.device)
             if verbose:
                 print("x", x.shape, x.sum())
-            x = x[:, tube_padding_mask]
+            x = x[:, encoder_mask]
             if self.use_cls_token:
                 cls_tokens = self.cls_token.expand(len(x), -1, -1)
                 x = torch.cat((cls_tokens, x), dim=1)
@@ -394,7 +394,7 @@ class SimpleViT(nn.Module):
                 pos_embed = self.posemb_sincos_4d.to(x.device)
                 if verbose:
                     print("pe", pos_embed.shape)
-                pos_emd_encoder = pos_embed[tube_padding_mask]
+                pos_emd_encoder = pos_embed[encoder_mask]
                 pos_emd_decoder = pos_embed[decoder_mask][decoder_padding_mask]
                 if verbose:
                     print("pos_emd_encoder", pos_emd_encoder.shape)

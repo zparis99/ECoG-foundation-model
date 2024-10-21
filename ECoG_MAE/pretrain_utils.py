@@ -33,7 +33,6 @@ def forward_model(signal, model, device, config, num_patches, num_frames, mse):
     if config.video_mae_task_config.decoder_mask_ratio == 0:
         decoder_mask = get_decoder_mask(
             config.video_mae_task_config.decoder_mask_ratio,
-            num_patches,
             tube_mask,
             device,
         )
