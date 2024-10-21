@@ -158,11 +158,11 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
         },
     ]
 
-    optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=config.trainer_config.init_learning_rate)
+    optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=config.trainer_config.max_learning_rate)
 
     lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
-        max_lr=config.trainer_config.init_learning_rate,
+        max_lr=config.trainer_config.max_learning_rate,
         epochs=config.trainer_config.num_epochs,
         steps_per_epoch=math.ceil(num_train_samples / config.ecog_data_config.batch_size),
     )
