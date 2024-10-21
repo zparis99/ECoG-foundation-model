@@ -10,7 +10,7 @@
 
 module purge
 module load anaconda3/2024.2
-source /scratch/gpfs/ln1144/ECoG-foundation-model/ecog/bin/activate
+conda activate /scratch/gpfs/zparis/ECoG-foundation-model/ecog
 
 echo 'Requester:' $USER 'Node:' $HOSTNAME
 echo "$@"
