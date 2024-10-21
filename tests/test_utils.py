@@ -56,3 +56,7 @@ def test_resampling_can_handle_non_divisible_sampling_rates():
         resample_mean_signals(input_signal, old_fs, new_fs),
         np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]),
     )
+
+
+# def test_rearrange_signals():
+    

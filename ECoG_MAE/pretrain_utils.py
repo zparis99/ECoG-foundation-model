@@ -4,6 +4,7 @@ from mask import *
 from utils import *
 from metrics import *
 from plot import *
+import constants
 from models import SimpleViT
 from config import VideoMAEExperimentConfig
 
@@ -21,10 +22,9 @@ def forward_model(signal, model, device, config, num_patches, num_frames, mse):
 
     # masking out parts of the input to the encoder (same mask across frames)
     tube_mask = get_tube_mask(
-        model_config.frame_patch_size,
         config.video_mae_task_config.tube_mask_ratio,
-        num_patches,
-        num_frames,
+        config.GRID_HEIGHT,
+        config.GRID_WIDTH,
         padding_mask,
         device,
     )
