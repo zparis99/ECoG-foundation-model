@@ -23,8 +23,8 @@ def forward_model(signal, model, device, config, num_patches, num_frames, mse):
     # masking out parts of the input to the encoder (same mask across frames)
     tube_mask = get_tube_mask(
         config.video_mae_task_config.tube_mask_ratio,
-        config.GRID_HEIGHT,
-        config.GRID_WIDTH,
+        constants.GRID_HEIGHT,
+        constants.GRID_WIDTH,
         padding_mask,
         device,
     )
