@@ -208,8 +208,9 @@ def test_single_epoch(test_dl: DataLoader,
                       log_writer=None):
     model.eval()
     with torch.no_grad():
+        running_loss = 0.
+        running_seen_loss = 0.
         for test_i, batch in enumerate(test_dl):
-
             signal = batch.to(device)
 
             if config.ecog_data_config.norm == "batch":
@@ -224,15 +225,19 @@ def test_single_epoch(test_dl: DataLoader,
                 logger.error(f"Got nan loss for index {test_i}. Ignoring and continuing...")
                 continue
             
-            loss_value = loss.item()
-            seen_loss_value = seen_loss.item()
-            
-            if log_writer is not None:
-                    """We use epoch_1000x as the x-axis in tensorboard.
-                    This calibrates different curves when batch size changes.
-                    """
-                    epoch_1000x = int(
-                        (test_i / len(test_dl) + epoch) * 1000
-                    )
-                    log_writer.add_scalar("loss/test", loss_value, epoch_1000x)
-                    log_writer.add_scalar("loss/test_seen", seen_loss_value, epoch_1000x)
+            running_loss += loss.item()
+            running_seen_loss += seen_loss.item()
+        
+        loss_mean = running_loss / (test_i + 1)
+        seen_loss_mean = running_seen_loss / (test_i + 1)
+
+        # Write averages for test data.
+        if log_writer is not None:
+                """We use epoch_1000x as the x-axis in tensorboard.
+                This aligns with the training loop.
+                """
+                epoch_1000x = int(
+                    (test_i / len(test_dl) + epoch) * 1000
+                )
+                log_writer.add_scalar("loss/test", loss_mean, epoch_1000x)
+                log_writer.add_scalar("loss/test_seen", seen_loss_mean, epoch_1000x)
