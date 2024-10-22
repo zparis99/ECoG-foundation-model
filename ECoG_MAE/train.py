@@ -19,7 +19,6 @@ def train_model(
     model,
     train_dl: torch.utils.data.DataLoader,
     test_dl: torch.utils.data.DataLoader,
-    num_patches: int,
     optimizer,
     lr_scheduler,
     accelerator,
@@ -79,13 +78,12 @@ def train_model(
                                device,
                                model,
                                config,
-                               num_patches,
                                num_frames,
                                logger,
                                mse,
                                log_writer=log_writer)
 
-            test_single_epoch(test_dl, device, model, config, num_patches, num_frames, logger, mse)
+            test_single_epoch(test_dl, device, model, config, num_frames, logger, mse)
 
             end = t.time()
 

@@ -20,7 +20,7 @@ def main(args):
 
     accelerator, device, data_type, local_rank = system_setup()
     train_dl, test_dl, num_train_samples = dl_setup(experiment_config)
-    model, optimizer, lr_scheduler, num_patches = model_setup(
+    model, optimizer, lr_scheduler, _ = model_setup(
         experiment_config, device, num_train_samples
     )
 
@@ -36,7 +36,6 @@ def main(args):
         model,
         train_dl,
         test_dl,
-        num_patches,
         optimizer,
         lr_scheduler,
         accelerator,
