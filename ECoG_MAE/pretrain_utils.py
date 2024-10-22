@@ -239,9 +239,11 @@ def test_single_epoch(
             log_writer.add_scalar("loss/test_seen", seen_loss_mean, epoch_1000x)
             log_writer.add_scalar(
                 "correlation/test_total_signal",
-                total_signal_correlation_mean.mean().item(),
+                total_signal_correlation_mean,
+                epoch_1000x
             )
             log_writer.add_scalar(
                 "correlation/test_unseen_signal",
-                unseen_signal_correlation_mean.mean().item(),
+                unseen_signal_correlation_mean,
+                epoch_1000x
             )
