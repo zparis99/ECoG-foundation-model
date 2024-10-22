@@ -12,7 +12,7 @@ import mae_st_util.misc as misc
 from mae_st_util.logging import master_print as print
 
 
-def forward_model(signal, model, device, config, num_frames, mse):
+def forward_model(signal, model, device, config, num_frames, mse, calculate_correlations=False):
     # TODO: Actually move this code into model.
     model_config = config.video_mae_task_config.vit_config
     padding_mask = get_padding_mask(signal, model, device)
@@ -86,15 +86,19 @@ def forward_model(signal, model, device, config, num_frames, mse):
     loss = mse(unseen_output, unseen_target)
     seen_loss = mse(seen_output, seen_target)
 
-    # get correlations
-    total_signal_correlations = get_signal_correlations(
-        full_recon_signal, full_target_signal
-    )
-    unseen_signal_correlations = get_signal_correlations(
-        unseen_recon_signal, unseen_target_signal
-    )
+    # TODO: improve efficiency so we can call this everytime.
+    if calculate_correlations:
+        # get correlations
+        total_signal_correlations = get_signal_correlations(
+            full_recon_signal, full_target_signal
+        )
+        unseen_signal_correlations = get_signal_correlations(
+            unseen_recon_signal, unseen_target_signal
+        )
 
-    return loss, seen_loss, total_signal_correlations, unseen_signal_correlations
+        return loss, seen_loss, total_signal_correlations, unseen_signal_correlations
+    else:
+        return loss, seen_loss
 
 
 def train_single_epoch(
@@ -139,7 +143,7 @@ def train_single_epoch(
             signal = torch.where(signal == 0, torch.tensor(float("nan")), signal)
 
         # mask indicating positions of channels that were rejected during preprocessing
-        loss, seen_loss, total_signal_correlations, unseen_signal_correlations = (
+        loss, seen_loss = (
             forward_model(signal, model, device, config, num_frames, mse)
         )
         if torch.isnan(loss):
@@ -171,14 +175,6 @@ def train_single_epoch(
             log_writer.add_scalar("loss/train", loss_value, epoch_1000x)
             log_writer.add_scalar("loss/train_seen", seen_loss_value, epoch_1000x)
             log_writer.add_scalar("lr", lr, epoch_1000x)
-            log_writer.add_scalar(
-                "correlation/train_total_signal",
-                total_signal_correlations.mean().item(),
-            )
-            log_writer.add_scalar(
-                "correlation/train_unseen_signal",
-                unseen_signal_correlations.mean().item(),
-            )
 
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -211,7 +207,7 @@ def test_single_epoch(
                 signal = torch.where(signal == 0, torch.tensor(float("nan")), signal)
 
             loss, seen_loss, total_signal_correlations, unseen_signal_correlations = (
-                forward_model(signal, model, device, config, num_frames, mse)
+                forward_model(signal, model, device, config, num_frames, mse, calculate_correlations=True)
             )
             if torch.isnan(loss):
                 logger.error(
