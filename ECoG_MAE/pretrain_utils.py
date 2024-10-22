@@ -88,8 +88,12 @@ def forward_model(signal, model, device, config, num_patches, num_frames, mse):
     # calculate loss
     loss = mse(unseen_output, unseen_target)
     seen_loss = mse(seen_output, seen_target)
+    
+    # get correlations
+    total_signal_correlations = get_signal_correlations(full_recon_signal, full_target_signal)
+    unseen_signal_correlations = get_signal_correlations(unseen_recon_signal, unseen_target_signal)
         
-    return loss, seen_loss
+    return loss, seen_loss, total_signal_correlations, unseen_signal_correlations
 
 
 def train_single_epoch(train_dl: DataLoader,
@@ -135,7 +139,7 @@ def train_single_epoch(train_dl: DataLoader,
             )
 
         # mask indicating positions of channels that were rejected during preprocessing
-        loss, seen_loss = forward_model(signal, model, device, config, num_patches, num_frames, mse)
+        loss, seen_loss, total_signal_correlations, unseen_signal_correlations = forward_model(signal, model, device, config, num_patches, num_frames, mse)
         if torch.isnan(loss):
             logger.error(f"Got nan loss for index {train_i}. Ignoring and continuing...")
             continue
@@ -165,6 +169,8 @@ def train_single_epoch(train_dl: DataLoader,
             log_writer.add_scalar("loss/train", loss_value, epoch_1000x)
             log_writer.add_scalar("loss/train_seen", seen_loss_value, epoch_1000x)
             log_writer.add_scalar("lr", lr, epoch_1000x)
+            log_writer.add_scalar("correlation/train_total_signal", total_signal_correlations.mean().item())
+            log_writer.add_scalar("correlation/train_unseen_signal", unseen_signal_correlations.mean().item())
             
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -185,6 +191,8 @@ def test_single_epoch(test_dl: DataLoader,
     with torch.no_grad():
         running_loss = 0.
         running_seen_loss = 0.
+        running_total_signal_correlation = 0.
+        running_unseen_signal_correlation = 0.
         for test_i, batch in enumerate(test_dl):
             signal = batch.to(device)
 
@@ -195,16 +203,20 @@ def test_single_epoch(test_dl: DataLoader,
                     signal == 0, torch.tensor(float("nan")), signal
                 )
 
-            loss, seen_loss = forward_model(signal, model, device, config, num_patches, num_frames, mse)
+            loss, seen_loss, total_signal_correlations, unseen_signal_correlations = forward_model(signal, model, device, config, num_patches, num_frames, mse)
             if torch.isnan(loss):
                 logger.error(f"Got nan loss for index {test_i}. Ignoring and continuing...")
                 continue
             
             running_loss += loss.item()
             running_seen_loss += seen_loss.item()
+            running_total_signal_correlation += total_signal_correlations.mean().item()
+            running_unseen_signal_correlation += unseen_signal_correlations.mean().item()
         
         loss_mean = running_loss / (test_i + 1)
         seen_loss_mean = running_seen_loss / (test_i + 1)
+        total_signal_correlation_mean = running_total_signal_correlation / (test_i + 1)
+        unseen_signal_correlation_mean = running_unseen_signal_correlation / (test_i + 1)
 
         # Write averages for test data.
         if log_writer is not None:
@@ -216,3 +228,5 @@ def test_single_epoch(test_dl: DataLoader,
                 )
                 log_writer.add_scalar("loss/test", loss_mean, epoch_1000x)
                 log_writer.add_scalar("loss/test_seen", seen_loss_mean, epoch_1000x)
+                log_writer.add_scalar("correlation/test_total_signal", total_signal_correlation_mean.mean().item())
+                log_writer.add_scalar("correlation/test_unseen_signal", unseen_signal_correlation_mean.mean().item())
