@@ -29,7 +29,7 @@ def preprocess_neural_data(
     means: Optional[np.array] = None,
     stds: Optional[np.array] = None,
     pad_before_sample: bool = False,
-    dtype=np.float32
+    dtype=np.float32,
 ) -> np.array:
     """Preprocess and reshape neural data for VideoMAE model.
 
@@ -104,7 +104,7 @@ def preprocess_neural_data(
                 8,
                 8,
             ),
-            dtype=dtype
+            dtype=dtype,
         )
         if pad_before_sample:
             preprocessed_signal = np.concatenate((padding, preprocessed_signal), axis=1)
@@ -179,7 +179,13 @@ def normalize(raw_signal):
     return signal
 
 
-def get_signal(patches: torch.Tensor, batch_size: int, num_bands: int, num_frames: int, model_config: ViTConfig) -> torch.Tensor:
+def get_signal(
+    patches: torch.Tensor,
+    batch_size: int,
+    num_bands: int,
+    num_frames: int,
+    model_config: ViTConfig,
+) -> torch.Tensor:
     """Convert patches into a signal of shape [electrodes, num_bands, num_frames]
 
     Args:
@@ -244,14 +250,20 @@ def rearrange_signals(
     full_recon_patches[:, tube_idx, :] = seen_output
     full_recon_patches[:, decoder_idx, :] = unseen_output
 
-    full_recon_signal = get_signal(full_recon_patches, batch_size, num_bands, num_frames, model_config)
-    
+    full_recon_signal = get_signal(
+        full_recon_patches, batch_size, num_bands, num_frames, model_config
+    )
+
     full_target_signal = rearrange(signal, "b c f d h w -> b (h w d) c f")
 
     # rearrange unseen patches into signal
-    unseen_recon_signal = get_signal(unseen_output, batch_size, num_bands, num_frames, model_config)
+    unseen_recon_signal = get_signal(
+        unseen_output, batch_size, num_bands, num_frames, model_config
+    )
 
-    unseen_target_signal = get_signal(unseen_target, batch_size, num_bands, num_frames, model_config)
+    unseen_target_signal = get_signal(
+        unseen_target, batch_size, num_bands, num_frames, model_config
+    )
 
     return (
         full_recon_signal,
@@ -282,3 +294,31 @@ def contrastive_loss(
         + torch.nn.functional.cross_entropy(feat2, labels)
     ) / 2
     return loss
+
+
+def get_signal_correlations(signal_a, signal_b):
+    """Get correlation coefficients between channels of signal_a and signal_b averaged over batch.
+
+    Args:
+        signal_a (tensor): shape [batch, num_electrodes, channels, observations]
+        signal_b (tensor): shape [batch, num_electrodes, channels, observations]
+        
+    Returns:
+        tensor of shape [num_electrodes, channels] where each entry is the correlation found between
+        the two signals for that electrode and channel.
+    """
+    correlation_matrix = torch.zeros(
+        signal_a.shape[0], signal_a.shape[1], signal_a.shape[2]
+    ).fill_(torch.nan)
+    
+    for batch in range(signal_a.shape[0]):
+        for electrode in range(signal_a.shape[1]):
+            for channel in range(signal_a.shape[2]):
+                correlation_matrix[batch, electrode, channel] = torch.corrcoef(
+                    torch.stack([
+                        signal_a[batch, electrode, channel],
+                        signal_b[batch, electrode, channel],
+                    ])
+                )[0, 1]
+                
+    return correlation_matrix.mean(dim=0)

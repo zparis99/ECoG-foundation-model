@@ -7,7 +7,7 @@ import torch
 
 from config import ViTConfig
 from mask import get_tube_mask, get_decoder_mask
-from utils import resample_mean_signals, rearrange_signals, get_signal
+from utils import resample_mean_signals, rearrange_signals, get_signal_correlations
 
 FRAME_PATCH_SIZE = 4
 NUM_BANDS = 5
@@ -133,4 +133,18 @@ def test_rearrange_signals_without_padding(fake_model):
     assert (seen_target == model_seen_output).all()
     assert (unseen_output == model_masked_output).all()
     assert (unseen_target == model_masked_output).all()
+    
+
+def test_get_signal_correlations():
+    signal_a = torch.ones(16, 64, 5, 40)
+    
+    for i in range(signal_a.shape[-1]):
+        signal_a[:, :, :, i] *= -1**i * i
+    
+    signal_b = signal_a * -1
+    
+    corr_matrix = get_signal_correlations(signal_a, signal_b)
+    
+    assert corr_matrix.detach().numpy().shape == (64, 5)
+    assert torch.isclose(corr_matrix, -torch.ones_like(corr_matrix)).all()
     
