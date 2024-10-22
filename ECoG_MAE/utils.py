@@ -179,19 +179,43 @@ def normalize(raw_signal):
     return signal
 
 
+def get_signal(patches: torch.Tensor, batch_size: int, num_bands: int, num_frames: int, model_config: ViTConfig) -> torch.Tensor:
+    """Convert patches into a signal of shape [electrodes, num_bands, num_frames]
+
+    Args:
+        patches (torch.Tensor): Patch transformed signal of model.
+        batch_size (int): The number of examples in a batch.
+        num_bands (int): Number of bands in patches.
+        num_frames (int): Number of frames in patches.
+        model_config (ViTConfig): Config for model.
+    """
+    return rearrange(
+        patches,
+        "b (f d s) (pd ph pw pf c) -> b (d pd s ph pw) c (f pf)",
+        c=num_bands,
+        d=1,
+        f=num_frames // model_config.frame_patch_size,
+        pd=model_config.patch_dims[0],
+        ph=model_config.patch_dims[1],
+        pw=model_config.patch_dims[2],
+        pf=model_config.frame_patch_size,
+    )
+
+
 def rearrange_signals(
-    data_config: ECoGDataConfig,
     model_config: ViTConfig,
     model,
     device,
     signal,
-    num_frames,
     decoder_out,
     padding_mask,
     tube_mask,
     decoder_mask,
     decoder_padding_mask,
 ):
+    batch_size = signal.shape[0]
+    num_bands = signal.shape[1]
+    num_frames = signal.shape[2]
 
     # parts of the reconstructed signal that were not seen by the encoder
     unseen_output = decoder_out[:, len(tube_mask.nonzero()) :]
@@ -220,62 +244,22 @@ def rearrange_signals(
     full_recon_patches[:, tube_idx, :] = seen_output
     full_recon_patches[:, decoder_idx, :] = unseen_output
 
-    full_recon_signal = model.unpatchify(full_recon_patches)
-
-    # rearrange seen patches into signal
-    seen_recon_signal = rearrange(
-        seen_output,
-        "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-        c=len(data_config.bands),
-        d=1,
-        f=num_frames // model_config.frame_patch_size,
-        pd=1,
-        ps=model_config.patch_size,
-        pf=model_config.frame_patch_size,
-    )
-
-    seen_target_signal = rearrange(
-        seen_target,
-        "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-        c=len(data_config.bands),
-        d=1,
-        f=num_frames // model_config.frame_patch_size,
-        pd=1,
-        ps=model_config.patch_size,
-        pf=model_config.frame_patch_size,
-    )
+    full_recon_signal = get_signal(full_recon_patches, batch_size, num_bands, num_frames, model_config)
+    
+    full_target_signal = rearrange(signal, "b c f d h w -> b (h w d) c f")
 
     # rearrange unseen patches into signal
-    unseen_recon_signal = rearrange(
-        unseen_output,
-        "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-        c=len(data_config.bands),
-        d=1,
-        f=num_frames // model_config.frame_patch_size,
-        pd=1,
-        ps=model_config.patch_size,
-        pf=model_config.frame_patch_size,
-    )
+    unseen_recon_signal = get_signal(unseen_output, batch_size, num_bands, num_frames, model_config)
 
-    unseen_target_signal = rearrange(
-        unseen_target,
-        "b (f d s) (pd ps pf c) -> b c (f pf) (d pd s ps)",
-        c=len(data_config.bands),
-        d=1,
-        f=num_frames // model_config.frame_patch_size,
-        pd=1,
-        ps=model_config.patch_size,
-        pf=model_config.frame_patch_size,
-    )
+    unseen_target_signal = get_signal(unseen_target, batch_size, num_bands, num_frames, model_config)
 
     return (
         full_recon_signal,
+        full_target_signal,
         unseen_output,
         unseen_target,
         seen_output,
         seen_target,
-        seen_target_signal,
-        seen_recon_signal,
         unseen_target_signal,
         unseen_recon_signal,
     )

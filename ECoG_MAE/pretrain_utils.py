@@ -65,16 +65,14 @@ def forward_model(signal, model, device, config, num_patches, num_frames, mse):
     # rearrange reconstructed and original patches (seen and not seen by encoder) into signal
     (
         full_recon_signal,
-        recon_output,
-        recon_target,
+        full_target_signal,
+        unseen_output,
+        unseen_target,
         seen_output,
         seen_target,
-        seen_target_signal,
-        seen_recon_signal,
         unseen_target_signal,
         unseen_recon_signal,
     ) = rearrange_signals(
-        config.ecog_data_config,
         model_config,
         model,
         device,
@@ -88,31 +86,8 @@ def forward_model(signal, model, device, config, num_patches, num_frames, mse):
     )
 
     # calculate loss
-    if config.trainer_config.loss == "patch":
-        loss = mse(recon_output, recon_target)
-        seen_loss = mse(seen_output, seen_target)
-    elif config.trainer_config.loss == "signal":
-        loss = mse(unseen_recon_signal, unseen_target_signal)
-        seen_loss = mse(seen_recon_signal, seen_target_signal)
-    elif config.trainer_config.loss == "both":
-        loss = mse(recon_output, recon_target) + mse(
-            unseen_recon_signal, unseen_target_signal
-        )
-        seen_loss = mse(seen_output, seen_target) + mse(
-            seen_recon_signal, seen_target_signal
-        )
-    elif config.trainer_config.loss == "full":
-        loss = mse(full_recon_signal, signal)
-        seen_loss = mse(seen_recon_signal, seen_target_signal)
-    elif config.trainer_config.loss == "highgamma":
-        loss = loss = mse(
-            unseen_recon_signal[:, 4, :, :],
-            unseen_target_signal[:, 4, :, :],
-        )
-        seen_loss = mse(
-            seen_recon_signal[:, 4, :, :],
-            seen_target_signal[:, 4, :, :],
-        )
+    loss = mse(unseen_output, unseen_target)
+    seen_loss = mse(seen_output, seen_target)
         
     return loss, seen_loss
 
