@@ -83,7 +83,7 @@ def train_model(
                                mse,
                                log_writer=log_writer)
 
-            test_single_epoch(test_dl, device, model, config, num_frames, logger, mse)
+            test_single_epoch(test_dl, epoch, device, model, config, num_frames, logger, mse, log_writer=log_writer)
 
             end = t.time()
 
