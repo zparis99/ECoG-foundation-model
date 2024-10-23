@@ -9,8 +9,7 @@
 #SBATCH -e './logs/%x.err'
 
 module purge
-module load anaconda3/2024.2
-conda activate /scratch/gpfs/zparis/ECoG-foundation-model/ecog
+source ecog/bin/activate
 
 echo 'Requester:' $USER 'Node:' $HOSTNAME
 echo "$@"
