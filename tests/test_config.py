@@ -58,7 +58,6 @@ CONFIG_VALUES = {
     "TrainerConfig": {
         "max_learning_rate": 0.0,
         "num_epochs": 10,
-        "loss": "patch",
     },
 }
 
@@ -165,7 +164,6 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
         # TrainerConfig parameters
         "max_learning_rate": 0.001,
         "num_epochs": 11,
-        "loss": "segment",
         
         # LoggingConfig parameters
         "event_log_dir": "new_dir/",
@@ -258,8 +256,7 @@ def test_write_config_file(mocker, tmp_path):
         ),
         trainer_config=TrainerConfig(
             max_learning_rate=1e-4,
-            num_epochs=50,
-            loss="mse"
+            num_epochs=50
         ),
         logging_config=LoggingConfig(
             event_log_dir="custom_logs/",

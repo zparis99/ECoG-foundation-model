@@ -44,8 +44,6 @@ class TrainerConfig:
     max_learning_rate: float = 3e-5
     # Number of epochs to train over data.
     num_epochs: int = 10
-    # Type of loss to use.
-    loss: str = "patch"
 
 
 @dataclass
@@ -157,7 +155,6 @@ def create_video_mae_experiment_config(args: Namespace | str):
         trainer_config=TrainerConfig(
             max_learning_rate=args.max_learning_rate if args.max_learning_rate else config.getfloat("TrainerConfig", "max_learning_rate"),
             num_epochs=args.num_epochs if args.num_epochs else config.getint("TrainerConfig", "num_epochs"),
-            loss=args.loss if args.loss else config.get("TrainerConfig", "loss"),
         ),
         ecog_data_config=ECoGDataConfig(
             norm=args.norm if args.norm else config.get("ECoGDataConfig", "norm"),
