@@ -110,11 +110,10 @@ class EncodingDecodingDataset:
             lag_start_sample = int(lag_start_time / 1000 * self.fs)
             lag_end_sample = lag_start_sample + self.fs * self.sample_secs
             
-            # If we are gathering a sample from before the start of the signal, pad before the sample.
-            pad_before_sample = False
-            if lag_start_sample < 0:
-                pad_before_sample = True
-                lag_start_sample = 0
+            # If we are gathering a sample from before the start of the signal or ends after the signal continue.
+            if lag_start_sample < 0 or lag_end_sample > self.signal.shape[1]:
+                self.index += 1
+                continue
                 
             curr_sample = self.signal[
                 :, lag_start_sample : lag_end_sample
@@ -125,7 +124,6 @@ class EncodingDecodingDataset:
                 self.fs,
                 self.new_fs,
                 self.sample_secs,
-                pad_before_sample=pad_before_sample,
             )
 
             yield word_data.loc["embeddings"], preprocessed_signal

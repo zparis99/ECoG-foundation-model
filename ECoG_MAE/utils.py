@@ -6,7 +6,8 @@ import scipy
 from einops import rearrange
 from typing import Optional
 
-from config import ECoGDataConfig, ViTConfig
+from config import ViTConfig
+import constants
 
 
 def seed_everything(seed=0, cudnn_deterministic=True):
@@ -49,12 +50,11 @@ def preprocess_neural_data(
 
     Returns:
         np.array:
-            shape c*t*d*h*w, where
-            c = freq bands,
+            shape t*h*w*c, where
             t = number of datapoints within a sample
-            d = depth (currently 1)
             h = height of grid (currently 8)
             w = width of grid (currently 8)
+            c = freq bands
     """
 
     def norm(input, ch_idx):
@@ -84,19 +84,18 @@ def preprocess_neural_data(
 
     resampled = resample_mean_signals(filtered_signal, fs, new_fs)
     # rearrange into shape c*t*d*h*w, where
-    # c = freq bands,
+    # c = freq bands
     # t = number of datapoints within a sample
-    # d = depth (currently 1)
     # h = height of grid (currently 8)
     # w = width of grid (currently 8)
     preprocessed_signal = rearrange(
-        np.array(resampled, dtype=np.float32), "c (h w) t -> c t () h w", h=8, w=8
+        np.array(resampled, dtype=np.float32), "c (h w) t -> c t h w", h=constants.GRID_SIZE, w=constants.GRID_SIZE
     )
 
     # Zero-pad if sample is too short.
     expected_sample_length = sample_secs * new_fs
     if preprocessed_signal.shape[1] < expected_sample_length:
-        padding = np.zeros(
+        padding = np.ones(
             (
                 preprocessed_signal.shape[0],
                 expected_sample_length - preprocessed_signal.shape[1],
@@ -105,7 +104,7 @@ def preprocess_neural_data(
                 8,
             ),
             dtype=dtype,
-        )
+        ) * np.nan
         if pad_before_sample:
             preprocessed_signal = np.concatenate((padding, preprocessed_signal), axis=1)
         else:
@@ -294,6 +293,17 @@ def contrastive_loss(
         + torch.nn.functional.cross_entropy(feat2, labels)
     ) / 2
     return loss
+
+
+def overwrite_model_padding_mask(model, padding_mask, using_padding_mask):
+    has_padded_pixels = not padding_mask.all()
+    if has_padded_pixels:
+        model.initialize_mask(padding_mask)
+        return True
+    # Stop initializing mask when there is no more need for padding.
+    elif using_padding_mask:
+        model.initialize_mask(None)
+        return False
 
 
 def get_signal_correlations(signal_a, signal_b):

@@ -64,8 +64,6 @@ def train_model(
         os.makedirs(checkpoint_dir)
     write_config_file(os.path.join(checkpoint_dir, "experiment_config.ini"), config)
 
-    mse = nn.MSELoss()
-
     for epoch in range(config.trainer_config.num_epochs):
         start = t.time()
         with torch.cuda.amp.autocast(dtype=data_type):
@@ -78,12 +76,10 @@ def train_model(
                                device,
                                model,
                                config,
-                               num_frames,
                                logger,
-                               mse,
                                log_writer=log_writer)
 
-            test_single_epoch(test_dl, epoch, device, model, config, num_frames, logger, mse, log_writer=log_writer)
+            test_single_epoch(test_dl, epoch, device, model, config, logger, log_writer=log_writer)
 
             end = t.time()
 

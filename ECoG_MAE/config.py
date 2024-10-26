@@ -51,18 +51,31 @@ class TrainerConfig:
 @dataclass
 class ViTConfig:
     # Dimensionality of token embeddings.
-    dim: int = 512
-    # Dimensionality of feedforward network after attention layer.
-    mlp_dim: int = 512
+    dim: int = 1024
+    # Dimensionality to transform encoder embeddings into when passing into the decoder.
+    decoder_embed_dim: int = 512
+    # Ratio of input dimensionality to use as a hidden layer in Transformer Block MLP's
+    mlp_ratio: float = 4.0
+    # Depth of encoder.
+    depth: int = 24
+    # Depth of decoder.
+    decoder_depth: int = 8
+    # Number of heads in encoder.
+    num_heads: int = 16
+    # Number of heads in decoder.
+    decoder_num_heads: int = 16
     # The number of electrodes in a patch.
     patch_size: int = 0
     # The number of frames to include in a tube per video mae.
-    frame_patch_size: int = 0
-    # Specifies per dimension patch size. [depth, height, width]
-    patch_dims: list[int] = field(default_factory=lambda: [1, 1, 1])
-    # Prepend classification token to input if True. Always True if
-    # use_contrastive_loss is True.
+    frame_patch_size: int = 1
+    # Prepend classification token to input if True.
     use_cls_token: bool = False
+    # If true then use a separate position embedding for the decoder.
+    sep_pos_embed: bool = True
+    # Use truncated normal initialization if True.
+    trunc_init: bool = False
+    # If True then don't use a bias for query, key, and values in attention blocks.
+    no_qkv_bias: bool = False
 
 
 @dataclass
@@ -77,13 +90,11 @@ class VideoMAETaskConfig:
     # Config for model.
     vit_config: ViTConfig = field(default_factory=ViTConfig)
     # Proportion of tubes to mask out. See VideoMAE paper for details.
-    tube_mask_ratio: float = 0.5
+    encoder_mask_ratio: float = 0.5
     # The ratio of the number of masked tokens in the input sequence.
     decoder_mask_ratio: float = 0
-    # If true then use contrastive loss to train model. Currently not supported.
-    use_contrastive_loss: bool = False
-    # If true use running cell masking when masking tokens.
-    running_cell_masking: bool = False
+    # If true then normalize the target before calculating loss.
+    norm_pix_loss: bool = False
 
 
 @dataclass
@@ -126,16 +137,22 @@ def create_video_mae_experiment_config(args: Namespace | str):
         video_mae_task_config=VideoMAETaskConfig(
             vit_config=ViTConfig(
                 dim=args.dim if args.dim else config.getint("VideoMAETaskConfig.ViTConfig", "dim"),
-                mlp_dim=args.mlp_dim if args.mlp_dim else config.getint("VideoMAETaskConfig.ViTConfig", "mlp_dim"),
+                decoder_embed_dim=args.decoder_embed_dim if args.decoder_embed_dim else config.getint("VideoMAETaskConfig.ViTConfig", "decoder_embed_dim"),
+                mlp_ratio=args.mlp_ratio if args.mlp_ratio else config.getfloat("VideoMAETaskConfig.ViTConfig", "mlp_ratio"),
+                depth=args.depth if args.depth else config.getint("VideoMAETaskConfig.ViTConfig", "depth"),
+                decoder_depth=args.decoder_depth if args.decoder_depth else config.getint("VideoMAETaskConfig.ViTConfig", "decoder_depth"),
+                num_heads=args.num_heads if args.num_heads else config.getint("VideoMAETaskConfig.ViTConfig", "num_heads"),
+                decoder_num_heads=args.decoder_num_heads if args.decoder_num_heads else config.getint("VideoMAETaskConfig.ViTConfig", "decoder_num_heads"),
                 patch_size=args.patch_size if args.patch_size else config.getint("VideoMAETaskConfig.ViTConfig", "patch_size"),
-                patch_dims=args.patch_dims if args.patch_dims else config.getlist("VideoMAETaskConfig.ViTConfig", "patch_dims"),
                 frame_patch_size=args.frame_patch_size if args.frame_patch_size else config.getint("VideoMAETaskConfig.ViTConfig", "frame_patch_size"),
                 use_cls_token=args.use_cls_token if args.use_cls_token else config.getboolean("VideoMAETaskConfig.ViTConfig", "use_cls_token"),
+                sep_pos_embed=args.sep_pos_embed if args.sep_pos_embed else config.getboolean("VideoMAETaskConfig.ViTConfig", "sep_pos_embed"),
+                trunc_init=args.trunc_init if args.trunc_init else config.getboolean("VideoMAETaskConfig.ViTConfig", "trunc_init"),
+                no_qkv_bias=args.no_qkv_bias if args.no_qkv_bias else config.getboolean("VideoMAETaskConfig.ViTConfig", "no_qkv_bias"),
             ),
-            tube_mask_ratio=args.tube_mask_ratio if args.tube_mask_ratio else config.getfloat("VideoMAETaskConfig", "tube_mask_ratio"),
+            encoder_mask_ratio=args.encoder_mask_ratio if args.encoder_mask_ratio else config.getfloat("VideoMAETaskConfig", "encoder_mask_ratio"),
             decoder_mask_ratio=args.decoder_mask_ratio if args.decoder_mask_ratio else config.getfloat("VideoMAETaskConfig", "decoder_mask_ratio"),
-            use_contrastive_loss=args.use_contrastive_loss if args.use_contrastive_loss else config.getboolean("VideoMAETaskConfig", "use_contrastive_loss"),
-            running_cell_masking=args.running_cell_masking if args.running_cell_masking else config.getboolean("VideoMAETaskConfig", "running_cell_masking"),
+            norm_pix_loss=args.norm_pix_loss if args.norm_pix_loss else config.getboolean("VideoMAETaskConfig", "norm_pix_loss"),
         ),
         trainer_config=TrainerConfig(
             max_learning_rate=args.max_learning_rate if args.max_learning_rate else config.getfloat("TrainerConfig", "max_learning_rate"),

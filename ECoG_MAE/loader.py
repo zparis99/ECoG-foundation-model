@@ -120,7 +120,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             # first we check whether the channel is included
             if not np.isin(channel, raw.info.ch_names):
                 # if not we insert 0 padding and shift upwards
-                sig = np.insert(sig, i, np.zeros((n_samples), dtype=np.float32), axis=0)
+                sig = np.insert(sig, i, np.ones((n_samples), dtype=np.float32) * np.nan, axis=0)
 
         # delete items that were shifted upwards
         sig = sig[:64, :]

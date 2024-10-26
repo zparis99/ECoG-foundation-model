@@ -18,17 +18,24 @@ from parser import arg_parser
 CONFIG_VALUES = {
     "VideoMAETaskConfig.ViTConfig": {
         "dim": 128,
-        "mlp_dim": 128,
+        "decoder_embed_dim": 64,
+        "mlp_ratio": 4.0,
+        "depth": 12,
+        "decoder_depth": 4,
+        "num_heads": 8,
+        "decoder_num_heads": 4,
         "patch_size": 1,
-        "patch_dims": [1, 1, 1],
         "frame_patch_size": 4,
         "use_cls_token": False,
+        "sep_pos_embed": False,
+        "trunc_init": False,
+        "no_qkv_bias": False,
     },
+
     "VideoMAETaskConfig": {
-        "tube_mask_ratio": 0.75,
+        "encoder_mask_ratio": 0.75,
         "decoder_mask_ratio": 0.0,
-        "use_contrastive_loss": False,
-        "running_cell_masking": False,
+        "norm_pix_loss": False,
     },
     "ECoGDataConfig": {
         "norm": "hour",
@@ -121,16 +128,27 @@ def test_config_file_loads_unchanged_without_command_line_args(mocker, fake_conf
 
 def test_command_line_args_overwrite_config(mocker, fake_config_path):
     command_line_args = {
+        # ViTConfig parameters
         "dim": 130,
-        "mlp_dim": 130,
+        "decoder_embed_dim": 96,
+        "mlp_ratio": 3.0,
+        "depth": 16,
+        "decoder_depth": 6,
+        "num_heads": 10,
+        "decoder_num_heads": 6,
         "patch_size": 2,
-        "patch_dims": [1, 2, 1],
         "frame_patch_size": 5,
         "use_cls_token": True,
-        "tube_mask_ratio": 0.73,
+        "sep_pos_embed": True,
+        "trunc_init": True,
+        "no_qkv_bias": True,
+        
+        # VideoMAETaskConfig parameters
+        "encoder_mask_ratio": 0.73,
         "decoder_mask_ratio": 0.02,
-        "use_contrastive_loss": True,
-        "running_cell_masking": True,
+        "norm_pix_loss": True,
+        
+        # ECoGDataConfig parameters
         "norm": "minute",
         "data_size": 0.98,
         "batch_size": 63,
@@ -143,9 +161,13 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
         "sample_length": 3,
         "shuffle": True,
         "test_loader": True,
+        
+        # TrainerConfig parameters
         "max_learning_rate": 0.001,
         "num_epochs": 11,
         "loss": "segment",
+        
+        # LoggingConfig parameters
         "event_log_dir": "new_dir/",
         "print_freq": 100,
     }
@@ -163,7 +185,7 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
         elif not isinstance(arg_value, bool):
             cli_argv.append(arg_name)
             cli_argv.append(str(arg_value))
-
+    print(cli_argv)
     mocker.patch(
         "sys.argv",
         [
@@ -202,42 +224,48 @@ def test_write_config_file(mocker, tmp_path):
     test_config = VideoMAEExperimentConfig(
         video_mae_task_config=VideoMAETaskConfig(
             vit_config=ViTConfig(
-                dim=128,
-                mlp_dim=128,
-                patch_size=1,
-                patch_dims=[1, 1, 1],
+                dim=768,
+                decoder_embed_dim=384,
+                mlp_ratio=3.0,
+                depth=12,
+                decoder_depth=4,
+                num_heads=8,
+                decoder_num_heads=8,
+                patch_size=2,
                 frame_patch_size=4,
-                use_cls_token=False
+                use_cls_token=True,
+                sep_pos_embed=False,
+                trunc_init=True,
+                no_qkv_bias=True
             ),
-            tube_mask_ratio=0.75,
-            decoder_mask_ratio=0.0,
-            use_contrastive_loss=False,
-            running_cell_masking=False
+            encoder_mask_ratio=0.75,
+            decoder_mask_ratio=0.25,
+            norm_pix_loss=True
         ),
         ecog_data_config=ECoGDataConfig(
-            norm="hour",
-            data_size=1.0,
-            batch_size=64,
-            env=False,
-            bands=[[4, 8], [8, 13], [13, 30], [30, 55], [70, 200]],
-            original_fs=512,
-            new_fs=20,
-            dataset_path="test_dataset_full",
-            train_data_proportion=0.9,
-            sample_length=2,
-            shuffle=False,
-            test_loader=False
+            norm="batch",
+            data_size=0.8,
+            batch_size=128,
+            env=True,
+            bands=[[1, 4], [4, 8], [8, 13], [13, 30], [30, 70]],
+            original_fs=1000,
+            new_fs=100,
+            dataset_path="custom_dataset",
+            train_data_proportion=0.8,
+            sample_length=4,
+            shuffle=True,
+            test_loader=True
         ),
         trainer_config=TrainerConfig(
-            max_learning_rate=0.0,
-            num_epochs=10,
-            loss="patch"
+            max_learning_rate=1e-4,
+            num_epochs=50,
+            loss="mse"
         ),
         logging_config=LoggingConfig(
-            event_log_dir="event_logs/",
-            print_freq=20
+            event_log_dir="custom_logs/",
+            print_freq=50
         ),
-        job_name="test_job"
+        job_name="custom_training_job"
     )
     
     tmp_file_path = os.path.join(tmp_path, "write_config.ini")
@@ -257,48 +285,6 @@ def test_write_config_file(mocker, tmp_path):
         "TrainerConfig",
         "JobDetails",
     }
-
-    # Check VideoMAETaskConfig.ViTConfig section
-    vit_config = config["VideoMAETaskConfig.ViTConfig"]
-    assert vit_config["dim"] == "128"
-    assert vit_config["mlp_dim"] == "128"
-    assert vit_config["patch_size"] == "1"
-    assert vit_config["patch_dims"] == "[1, 1, 1]"
-    assert vit_config["frame_patch_size"] == "4"
-    assert vit_config["use_cls_token"] == "False"
-
-    # Check VideoMAETaskConfig section
-    vmae_config = config["VideoMAETaskConfig"]
-    assert vmae_config["tube_mask_ratio"] == "0.75"
-    assert vmae_config["decoder_mask_ratio"] == "0.0"
-    assert vmae_config["use_contrastive_loss"] == "False"
-    assert vmae_config["running_cell_masking"] == "False"
-
-    # Check ECoGDataConfig section
-    ecog_config = config["ECoGDataConfig"]
-    assert ecog_config["norm"] == "hour"
-    assert ecog_config["data_size"] == "1.0"
-    assert ecog_config["batch_size"] == "64"
-    assert ecog_config["env"] == "False"
-    assert ecog_config["bands"] == "[[4, 8], [8, 13], [13, 30], [30, 55], [70, 200]]"
-    assert ecog_config["original_fs"] == "512"
-    assert ecog_config["new_fs"] == "20"
-    assert ecog_config["dataset_path"] == "test_dataset_full"
-    assert ecog_config["train_data_proportion"] == "0.9"
-    assert ecog_config["sample_length"] == "2"
-    assert ecog_config["shuffle"] == "False"
-    assert ecog_config["test_loader"] == "False"
-
-    # Check LoggingConfig section
-    logging_config = config["LoggingConfig"]
-    assert logging_config["event_log_dir"] == "event_logs/"
-    assert logging_config["print_freq"] == "20"
-
-    # Check TrainerConfig section
-    trainer_config = config["TrainerConfig"]
-    assert trainer_config["max_learning_rate"] == "0.0"
-    assert trainer_config["num_epochs"] == "10"
-    assert trainer_config["loss"] == "patch"
     
     # Lastly make sure it can be read correctly by our reading function.
     mocker.patch(
