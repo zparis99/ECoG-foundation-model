@@ -89,8 +89,8 @@ class VideoMAETaskConfig:
     vit_config: ViTConfig = field(default_factory=ViTConfig)
     # Proportion of tubes to mask out. See VideoMAE paper for details.
     encoder_mask_ratio: float = 0.5
-    # The ratio of the number of masked tokens in the input sequence.
-    decoder_mask_ratio: float = 0
+    # Percentage of masks tokens to pass into decoder for reconstruction.
+    pct_masks_to_decode: float = 0
     # If true then normalize the target before calculating loss.
     norm_pix_loss: bool = False
 
@@ -149,7 +149,7 @@ def create_video_mae_experiment_config(args: Namespace | str):
                 no_qkv_bias=args.no_qkv_bias if args.no_qkv_bias else config.getboolean("VideoMAETaskConfig.ViTConfig", "no_qkv_bias"),
             ),
             encoder_mask_ratio=args.encoder_mask_ratio if args.encoder_mask_ratio else config.getfloat("VideoMAETaskConfig", "encoder_mask_ratio"),
-            decoder_mask_ratio=args.decoder_mask_ratio if args.decoder_mask_ratio else config.getfloat("VideoMAETaskConfig", "decoder_mask_ratio"),
+            pct_masks_to_decode=args.pct_masks_to_decode if args.pct_masks_to_decode else config.getfloat("VideoMAETaskConfig", "pct_masks_to_decode"),
             norm_pix_loss=args.norm_pix_loss if args.norm_pix_loss else config.getboolean("VideoMAETaskConfig", "norm_pix_loss"),
         ),
         trainer_config=TrainerConfig(

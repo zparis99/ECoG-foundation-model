@@ -45,8 +45,8 @@ def arg_parser():
     # VideoMAETaskConfig parameters
     parser.add_argument("--encoder-mask-ratio", type=float,
                        help="Proportion of tubes to mask out. See VideoMAE paper for details.")
-    parser.add_argument("--decoder-mask-ratio", type=float,
-                       help="The ratio of the number of masked tokens in the input sequence.")
+    parser.add_argument("--pct-masks-to-decode", type=float,
+                       help="The percentage of masks to feed into the decoder.")
     parser.add_argument("--norm-pix-loss", dest="norm_pix_loss", action="store_true",
                        help="If true then normalize the target before calculating loss.")
     parser.set_defaults(norm_pix_loss=False)

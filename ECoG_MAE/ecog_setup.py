@@ -85,7 +85,7 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
     print("num_decoder_patches", num_decoder_patches)
         
     model = MaskedAutoencoderViT(
-        image_size=constants.GRID_SIZE,
+        img_size=constants.GRID_SIZE,
         patch_size=model_config.patch_size,
         in_chans=len(config.ecog_data_config.bands),
         embed_dim=model_config.dim,
@@ -104,7 +104,7 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
         cls_embed=model_config.use_cls_token,
         pred_t_dim=num_frames // model_config.frame_patch_size,
         img_mask=None,
-        pct_masks_to_decode=config.video_mae_task_config.decoder_mask_ratio,
+        pct_masks_to_decode=config.video_mae_task_config.pct_masks_to_decode,
     )
     utils.count_params(model)
 
