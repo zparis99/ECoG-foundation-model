@@ -2,7 +2,7 @@ import torch
 from einops import rearrange
 
 
-def get_padding_mask(signal, model, device):
+def get_padding_mask(signal, device):
     """
     Zero padding for channels that were rejected during preprocessing for bad signal quality
 
@@ -12,17 +12,10 @@ def get_padding_mask(signal, model, device):
         device: GPU device
 
     Returns:
-        padding_mask: boolean tensor of same shape as patchified signal indicating which parts of the signal are padded
+        padding_mask: boolean tensor of same shape as image indicating which parts of the signal are padded
 
     """
-    padding_mask = ~torch.isnan(signal).to(device)
-    padding_mask = rearrange(model.patchify(padding_mask), "b ... d -> b (...) d")
-
-    # TODO make flexible for handling ps > 1
-    padding_mask = torch.all(padding_mask, dim=0)
-    padding_mask = torch.all(padding_mask, dim=1)
-
-    return padding_mask
+    return (~torch.isnan(signal)).all(axis=2).all(axis=1).all(axis=0).to(device)
 
 
 def get_tube_mask(tube_mask_ratio, height, width, padding_mask, device):

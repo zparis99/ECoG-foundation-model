@@ -51,7 +51,7 @@ def train_single_epoch(
 
         signal = batch.to(device)
 
-        padding_mask = get_padding_mask(signal, model, device)
+        padding_mask = get_padding_mask(signal, device)
         # TODO: We don't necessarily need to call this so often but for now this is easier.
         # We could be more clever with this though.
         model.initialize_mask(padding_mask)
@@ -108,7 +108,7 @@ def test_single_epoch(
         for test_i, batch in enumerate(test_dl):
             signal = batch.to(device)
 
-            padding_mask = get_padding_mask(signal, model, device)
+            padding_mask = get_padding_mask(signal, device)
             # TODO: We don't necessarily need to call this so often but for now this is easier.
             # We could be more clever with this though.
             model.initialize_mask(padding_mask)
