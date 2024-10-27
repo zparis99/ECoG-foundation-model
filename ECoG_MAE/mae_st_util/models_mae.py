@@ -604,11 +604,12 @@ class MaskedAutoencoderViT(nn.Module):
             var = target.var(dim=-1, keepdim=True)
             target = (target - mean) / (var + 1.0e-6) ** 0.5
 
-        _img_pred = rearrange(pred, "b (t h w) (u p p c) -> b c (t u) (h p) (w p)",
-                             h=_imgs.shape[3],
-                             w=_imgs.shape[4]
+        _img_pred = rearrange(pred, "b (t h w) (u ph pw c) -> b c (t u) (h ph) (w pw)",
+                             h=_imgs.shape[3] // self.patch_size,
+                             w=_imgs.shape[4] // self.patch_size,
                              c=_imgs.shape[1],
-                             p=self.patch_size)
+                             ph=self.patch_size,
+                             pw=self.patch_size)
         
         correlation = pearson_correlation(_imgs, _img_pred)
         

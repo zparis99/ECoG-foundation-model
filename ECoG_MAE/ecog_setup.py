@@ -79,7 +79,7 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
     )
 
     num_encoder_patches = int(num_patches * (1 - config.video_mae_task_config.encoder_mask_ratio))
-    num_decoder_patches = int(num_patches * (1 - config.video_mae_task_config.decoder_mask_ratio))
+    num_decoder_patches = int(num_patches * config.video_mae_task_config.pct_masks_to_decode)
     print("num_patches", num_patches)
     print("num_encoder_patches", num_encoder_patches)
     print("num_decoder_patches", num_decoder_patches)
