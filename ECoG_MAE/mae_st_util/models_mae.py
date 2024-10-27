@@ -17,6 +17,7 @@ import torch.nn as nn
 from einops import rearrange
 import copy
 from mae_st_util import video_vit
+from metrics import pearson_correlation
 
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
@@ -55,6 +56,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.t_pred_patch_size = t_patch_size * pred_t_dim // num_frames
         self.embed_dim = embed_dim
         self.pct_masks_to_decode = pct_masks_to_decode
+        self.patch_size = patch_size
 
         self.patch_embed = patch_embed(
             img_size,
@@ -329,7 +331,6 @@ class MaskedAutoencoderViT(nn.Module):
 
         x = x.reshape(N, T * L, C)
         
-
         # masking: length -> length * mask_ratio
         if not use_contrastive_loss:
             x, mask, ids_restore, ids_keep = self.random_masking(x, mask_ratio)
@@ -603,6 +604,14 @@ class MaskedAutoencoderViT(nn.Module):
             var = target.var(dim=-1, keepdim=True)
             target = (target - mean) / (var + 1.0e-6) ** 0.5
 
+        _img_pred = rearrange(pred, "b (t h w) (u p p c) -> b c (t u) (h p) (w p)",
+                             h=_imgs.shape[3],
+                             w=_imgs.shape[4]
+                             c=_imgs.shape[1],
+                             p=self.patch_size)
+        
+        correlation = pearson_correlation(_imgs, _img_pred)
+        
         loss = (pred - target) ** 2
         if self.img_mask is not None:
             # exclude missing pixels from loss
@@ -611,7 +620,7 @@ class MaskedAutoencoderViT(nn.Module):
             loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
 
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
-        return loss
+        return loss, correlation
     
     def forward_cyclic_loss(self, pred1, pred2, mask):
         """
@@ -687,8 +696,8 @@ class MaskedAutoencoderViT(nn.Module):
             latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio, use_contrastive_loss=use_contrastive_loss)
             if not use_contrastive_loss:
                 pred = self.forward_decoder(latent, ids_restore, use_contrastive_loss=use_contrastive_loss)  # [N, L, p*p*C]
-                loss = self.forward_loss(imgs, pred, mask)
-                return loss, pred, mask, latent
+                loss, correlation = self.forward_loss(imgs, pred, mask)
+                return loss, pred, mask, latent, correlation
             else:
                 latent1, latent2 = latent
                 mask1, mask2 = mask

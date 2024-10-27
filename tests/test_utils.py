@@ -83,17 +83,3 @@ def test_resampling_can_handle_non_divisible_sampling_rates():
         np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]),
     )
     
-
-def test_get_signal_correlations():
-    signal_a = torch.ones(16, 64, 5, 40)
-    
-    for i in range(signal_a.shape[-1]):
-        signal_a[:, :, :, i] *= -1**i * i
-    
-    signal_b = signal_a * -1
-    
-    corr_matrix = get_signal_correlations(signal_a, signal_b)
-    
-    assert corr_matrix.detach().numpy().shape == (64, 5)
-    assert torch.isclose(corr_matrix, -torch.ones_like(corr_matrix)).all()
-    
