@@ -39,7 +39,9 @@ def test_model_forward_without_mask_succeeds(model):
     fake_batch = torch.randn(
         16, NUM_BANDS, FRAMES_PER_SAMPLE, constants.GRID_SIZE, constants.GRID_SIZE
     )
-    loss, pred, mask, latent = model_forward(model, fake_batch, mask_ratio=0.8)
+    loss, pred, mask, latent, correlations = model_forward(
+        model, fake_batch, mask_ratio=0.8
+    )
 
     num_patches = (
         FRAMES_PER_SAMPLE
@@ -56,13 +58,18 @@ def test_model_forward_without_mask_succeeds(model):
         int(num_patches * (1 - 0.8)),
         EMBEDDING_DIM,
     )
+    assert correlations.detach().numpy().shape == (
+        NUM_BANDS,
+        constants.GRID_SIZE,
+        constants.GRID_SIZE,
+    )
 
 
 def test_model_forward_with_mask_succeeds(model):
     fake_batch = torch.randn(
         16, NUM_BANDS, FRAMES_PER_SAMPLE, constants.GRID_SIZE, constants.GRID_SIZE
     )
-    
+
     fake_batch[:, :, :, 0, 0] *= torch.nan
     fake_batch[:, :, :, 0, 1] *= torch.nan
 
@@ -71,7 +78,9 @@ def test_model_forward_with_mask_succeeds(model):
     mask[0][1] = False
 
     model.initialize_mask(mask)
-    loss, pred, mask, latent = model_forward(model, fake_batch, mask_ratio=0.8)
+    loss, pred, mask, latent, correlations = model_forward(
+        model, fake_batch, mask_ratio=0.8
+    )
 
     num_patches = (
         FRAMES_PER_SAMPLE
@@ -90,6 +99,11 @@ def test_model_forward_with_mask_succeeds(model):
         16,
         int(num_patches_excluding_padding * (1 - 0.8)),
         EMBEDDING_DIM,
+    )
+    assert correlations.detach().numpy().shape == (
+        NUM_BANDS,
+        constants.GRID_SIZE,
+        constants.GRID_SIZE,
     )
 
 
@@ -110,7 +124,9 @@ def test_model_with_data_loader_input_succeeds(model, data_loader_creation_fn):
     )
 
     for data in data_loader:
-        loss, pred, mask, latent = model_forward(model, data, mask_ratio=0.8)
+        loss, pred, mask, latent, correlations = model_forward(
+            model, data, mask_ratio=0.8
+        )
 
         num_patches = (
             FRAMES_PER_SAMPLE
@@ -126,4 +142,9 @@ def test_model_with_data_loader_input_succeeds(model, data_loader_creation_fn):
             16,
             int(num_patches * (1 - 0.8)),
             EMBEDDING_DIM,
+        )
+        assert correlations.detach().numpy().shape == (
+            NUM_BANDS,
+            constants.GRID_SIZE,
+            constants.GRID_SIZE,
         )

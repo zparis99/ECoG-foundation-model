@@ -3,15 +3,16 @@ from dataclasses import asdict
 import os
 import pytest
 
-from config import (create_video_mae_experiment_config,
-                    create_video_mae_experiment_config_from_file,
-                    VideoMAEExperimentConfig,
-                    VideoMAETaskConfig,
-                    ViTConfig,
-                    ECoGDataConfig,
-                    TrainerConfig,
-                    LoggingConfig,
-                    write_config_file
+from config import (
+    create_video_mae_experiment_config,
+    create_video_mae_experiment_config_from_file,
+    VideoMAEExperimentConfig,
+    VideoMAETaskConfig,
+    ViTConfig,
+    ECoGDataConfig,
+    TrainerConfig,
+    LoggingConfig,
+    write_config_file,
 )
 from parser import arg_parser
 
@@ -31,7 +32,6 @@ CONFIG_VALUES = {
         "trunc_init": False,
         "no_qkv_bias": False,
     },
-
     "VideoMAETaskConfig": {
         "encoder_mask_ratio": 0.75,
         "pct_masks_to_decode": 1.0,
@@ -54,12 +54,14 @@ CONFIG_VALUES = {
     "LoggingConfig": {
         "event_log_dir": "test_logging_dir/",
         "print_freq": 30,
+        "plot_dir": "test_plot_dir/",
     },
     "TrainerConfig": {
         "max_learning_rate": 0.0,
         "num_epochs": 10,
     },
 }
+
 
 @pytest.fixture
 def fake_config_path(tmp_path):
@@ -68,18 +70,20 @@ def fake_config_path(tmp_path):
     path = os.path.join(tmp_path, "config.ini")
     with open(path, "w") as fp:
         config.write(fp)
-    
+
     return path
 
 
 def test_create_video_mae_experiment_config_from_file(fake_config_path):
     experiment_config = create_video_mae_experiment_config_from_file(fake_config_path)
-    
+
     # Make sure all experiment config values match config file
     for section in CONFIG_VALUES.keys():
         for field, value in CONFIG_VALUES[section].items():
             if section == "VideoMAETaskConfig.ViTConfig":
-                actual_config_dict = asdict(experiment_config.video_mae_task_config.vit_config)
+                actual_config_dict = asdict(
+                    experiment_config.video_mae_task_config.vit_config
+                )
             if section == "VideoMAETaskConfig":
                 actual_config_dict = asdict(experiment_config.video_mae_task_config)
             if section == "ECoGDataConfig":
@@ -88,28 +92,25 @@ def test_create_video_mae_experiment_config_from_file(fake_config_path):
                 actual_config_dict = asdict(experiment_config.trainer_config)
             if section == "LoggingConfig":
                 actual_config_dict = asdict(experiment_config.logging_config)
-                
-            assert actual_config_dict[field] == value
-            
 
-def test_config_file_loads_unchanged_without_command_line_args(mocker, fake_config_path):
-    mocker.patch(
-        "sys.argv",
-        [
-            "main.py",
-            "--config-file",
-            fake_config_path
-        ]
-    )
-    
+            assert actual_config_dict[field] == value
+
+
+def test_config_file_loads_unchanged_without_command_line_args(
+    mocker, fake_config_path
+):
+    mocker.patch("sys.argv", ["main.py", "--config-file", fake_config_path])
+
     args = arg_parser()
     experiment_config = create_video_mae_experiment_config(args)
-    
+
     # Make sure all experiment config values match config file
     for section in CONFIG_VALUES.keys():
         for field, value in CONFIG_VALUES[section].items():
             if section == "VideoMAETaskConfig.ViTConfig":
-                actual_config_dict = asdict(experiment_config.video_mae_task_config.vit_config)
+                actual_config_dict = asdict(
+                    experiment_config.video_mae_task_config.vit_config
+                )
             if section == "VideoMAETaskConfig":
                 actual_config_dict = asdict(experiment_config.video_mae_task_config)
             if section == "ECoGDataConfig":
@@ -118,12 +119,12 @@ def test_config_file_loads_unchanged_without_command_line_args(mocker, fake_conf
                 actual_config_dict = asdict(experiment_config.trainer_config)
             if section == "LoggingConfig":
                 actual_config_dict = asdict(experiment_config.logging_config)
-                
+
             assert actual_config_dict[field] == value
-            
+
     # Clean up the temporary file
     os.unlink(fake_config_path)
-            
+
 
 def test_command_line_args_overwrite_config(mocker, fake_config_path):
     command_line_args = {
@@ -141,12 +142,10 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
         "sep_pos_embed": True,
         "trunc_init": True,
         "no_qkv_bias": True,
-        
         # VideoMAETaskConfig parameters
         "encoder_mask_ratio": 0.73,
         "pct_masks_to_decode": 0.02,
         "norm_pix_loss": True,
-        
         # ECoGDataConfig parameters
         "norm": "minute",
         "data_size": 0.98,
@@ -160,23 +159,22 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
         "sample_length": 3,
         "shuffle": True,
         "test_loader": True,
-        
         # TrainerConfig parameters
         "max_learning_rate": 0.001,
         "num_epochs": 11,
-        
         # LoggingConfig parameters
         "event_log_dir": "new_dir/",
         "print_freq": 100,
+        "plot_dir": "new_plot_dir/",
     }
-    
+
     # Convert to list which can be passed into sys.argv
     cli_argv = []
     for arg_name, arg_value in command_line_args.items():
         # Prepend -- and replace _ with -
         arg_name = arg_name.replace("_", "-")
         arg_name = "--" + arg_name
-        
+
         # Only add arg name if bool value.
         if isinstance(arg_value, bool) and arg_value:
             cli_argv.append(arg_name)
@@ -190,19 +188,22 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
             "main.py",
             "--config-file",
             fake_config_path,
-        ] + cli_argv
+        ]
+        + cli_argv,
     )
-    
+
     args = arg_parser()
     experiment_config = create_video_mae_experiment_config(args)
-    
+
     config_file = configparser.ConfigParser()
     config_file.read("tests/testdata/video_mae_config_file.ini")
     # Make sure all experiment config values match config file
     for section in CONFIG_VALUES.keys():
         for field, value in CONFIG_VALUES[section].items():
             if section == "VideoMAETaskConfig.ViTConfig":
-                actual_config_dict = asdict(experiment_config.video_mae_task_config.vit_config)
+                actual_config_dict = asdict(
+                    experiment_config.video_mae_task_config.vit_config
+                )
             if section == "VideoMAETaskConfig":
                 actual_config_dict = asdict(experiment_config.video_mae_task_config)
             if section == "ECoGDataConfig":
@@ -211,13 +212,15 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
                 actual_config_dict = asdict(experiment_config.trainer_config)
             if section == "LoggingConfig":
                 actual_config_dict = asdict(experiment_config.logging_config)
-                
-            assert actual_config_dict[field] == command_line_args[field], f"For field {field} expected: {command_line_args[field]} actual: {actual_config_dict[field]}"
-            
+
+            assert (
+                actual_config_dict[field] == command_line_args[field]
+            ), f"For field {field} expected: {command_line_args[field]} actual: {actual_config_dict[field]}"
+
     # Clean up the temporary file
     os.unlink(fake_config_path)
-            
-            
+
+
 def test_write_config_file(mocker, tmp_path):
     test_config = VideoMAEExperimentConfig(
         video_mae_task_config=VideoMAETaskConfig(
@@ -234,11 +237,11 @@ def test_write_config_file(mocker, tmp_path):
                 use_cls_token=True,
                 sep_pos_embed=False,
                 trunc_init=True,
-                no_qkv_bias=True
+                no_qkv_bias=True,
             ),
             encoder_mask_ratio=0.75,
             pct_masks_to_decode=0.25,
-            norm_pix_loss=True
+            norm_pix_loss=True,
         ),
         ecog_data_config=ECoGDataConfig(
             norm="batch",
@@ -252,21 +255,17 @@ def test_write_config_file(mocker, tmp_path):
             train_data_proportion=0.8,
             sample_length=4,
             shuffle=True,
-            test_loader=True
+            test_loader=True,
         ),
-        trainer_config=TrainerConfig(
-            max_learning_rate=1e-4,
-            num_epochs=50
-        ),
+        trainer_config=TrainerConfig(max_learning_rate=1e-4, num_epochs=50),
         logging_config=LoggingConfig(
-            event_log_dir="custom_logs/",
-            print_freq=50
+            event_log_dir="custom_logs/", print_freq=50, plot_dir="custom_plots/"
         ),
-        job_name="custom_training_job"
+        job_name="custom_training_job",
     )
-    
+
     tmp_file_path = os.path.join(tmp_path, "write_config.ini")
-    
+
     write_config_file(tmp_file_path, test_config)
 
     # Read the written file
@@ -282,22 +281,15 @@ def test_write_config_file(mocker, tmp_path):
         "TrainerConfig",
         "JobDetails",
     }
-    
+
     # Lastly make sure it can be read correctly by our reading function.
-    mocker.patch(
-        "sys.argv",
-        [
-            "main.py",
-            "--config-file",
-            tmp_file_path
-        ]
-    )
-    
+    mocker.patch("sys.argv", ["main.py", "--config-file", tmp_file_path])
+
     args = arg_parser()
     experiment_config = create_video_mae_experiment_config(args)
-    
+
     # Make sure all experiment config values match config file
     assert experiment_config == test_config
-            
+
     # Clean up the temporary file
     os.unlink(tmp_file_path)

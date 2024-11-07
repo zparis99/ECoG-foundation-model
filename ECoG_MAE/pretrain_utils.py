@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from mask import *
 from utils import *
-from plot import *
+from plot import save_reconstruction_plot
 from mae_st_util.models_mae import MaskedAutoencoderViT
 from config import VideoMAEExperimentConfig
 import constants
@@ -17,12 +17,18 @@ def model_forward(model, signal, mask_ratio):
     return model(signal, mask_ratio=mask_ratio)
 
 
-def write_correlation_metrics(log_writer, prefix_str, band_correlations, channel_correlations, epoch_1000x):
+def write_correlation_metrics(
+    log_writer, prefix_str, band_correlations, channel_correlations, epoch_1000x
+):
     for i, band_correlation in enumerate(band_correlations):
-        log_writer.add_scalar(f"bands/{prefix_str}_correlations_{i}", band_correlation, epoch_1000x)
-        
+        log_writer.add_scalar(
+            f"bands/{prefix_str}_correlations_{i}", band_correlation, epoch_1000x
+        )
+
     for i, channel_correlation in enumerate(channel_correlations):
-        log_writer.add_scalar(f"channels/{prefix_str}_correlations_{i}", channel_correlation, epoch_1000x)
+        log_writer.add_scalar(
+            f"channels/{prefix_str}_correlations_{i}", channel_correlation, epoch_1000x
+        )
 
 
 def train_single_epoch(
@@ -83,7 +89,9 @@ def train_single_epoch(
 
         loss_value = loss.item()
         correlation_value = correlations.mean().item()
-        band_correlations = correlations.view(len(config.ecog_data_config.bands), -1).mean(dim=1)
+        band_correlations = correlations.view(
+            len(config.ecog_data_config.bands), -1
+        ).mean(dim=1)
         channel_correlations = correlations.mean(dim=0).flatten()
 
         metric_logger.update(loss=loss_value)
@@ -102,10 +110,16 @@ def train_single_epoch(
             epoch_1000x = int((train_i / len(train_dl) + epoch) * 1000)
             log_writer.add_scalar("loss/train", loss_value, epoch_1000x)
             log_writer.add_scalar("lr", lr, epoch_1000x)
-            
+
             # Write overall correlation, individual channels, and bands.
             log_writer.add_scalar("correlation/train", correlation_value, epoch_1000x)
-            write_correlation_metrics(log_writer, "train", band_correlations, channel_correlations, epoch_1000x)
+            write_correlation_metrics(
+                log_writer,
+                "train",
+                band_correlations,
+                channel_correlations,
+                epoch_1000x,
+            )
 
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -126,7 +140,9 @@ def test_single_epoch(
         running_loss = 0.0
         running_correlation = 0.0
         running_band_correlations = torch.zeros(len(config.ecog_data_config.bands))
-        running_channel_correlations= torch.zeros(len(constants.GRID_SIZE * constants.GRID_SIZE))
+        running_channel_correlations = torch.zeros(
+            len(constants.GRID_SIZE * constants.GRID_SIZE)
+        )
         for test_i, batch in enumerate(test_dl):
             signal = batch.to(device)
 
@@ -136,7 +152,7 @@ def test_single_epoch(
             model.initialize_mask(padding_mask)
 
             # TODO: Add more metrics using the other outputs.
-            loss, _, _, _, correlations = model_forward(
+            loss, pred, _, _, correlations = model_forward(
                 model, signal, config.video_mae_task_config.encoder_mask_ratio
             )
             if torch.isnan(loss):
@@ -145,9 +161,26 @@ def test_single_epoch(
                 )
                 continue
 
+            # Draw a plot of the first electrode in the first batch so we can see the reconstruction.
+            if test_i == 0:
+                signal_np = signal.detach().cpu().numpy()
+
+                pred_signal = model.unpatchify(pred)
+                pred_signal_np = pred_signal.detach().cpu().numpy()
+                save_reconstruction_plot(
+                    signal_np,
+                    pred_signal_np,
+                    epoch,
+                    config.logging_config.plot_dir,
+                    log_writer=log_writer,
+                    t_patch_size=config.video_mae_task_config.vit_config.t_patch_size,
+                )
+
             running_loss += loss.item()
             running_correlation += correlations.mean().item()
-            running_band_correlations += correlations.view(len(config.ecog_data_config.bands), -1).mean(dim=1)
+            running_band_correlations += correlations.view(
+                len(config.ecog_data_config.bands), -1
+            ).mean(dim=1)
             running_channel_correlations += correlations.mean(dim=0).flatten()
 
         loss_mean = running_loss / (test_i + 1)
@@ -164,4 +197,10 @@ def test_single_epoch(
             log_writer.add_scalar("loss/test", loss_mean, epoch_1000x)
             # Write overall correlation, individual channels, and bands.
             log_writer.add_scalar("correlation/test", correlation_mean, epoch_1000x)
-            write_correlation_metrics(log_writer, "test", band_correlation_mean, channel_correlation_mean, epoch_1000x)
+            write_correlation_metrics(
+                log_writer,
+                "test",
+                band_correlation_mean,
+                channel_correlation_mean,
+                epoch_1000x,
+            )

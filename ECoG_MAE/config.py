@@ -80,8 +80,11 @@ class ViTConfig:
 class LoggingConfig:
     # Directory to write logs to (i.e. tensorboard events, etc).
     event_log_dir: str = "event_logs/"
+    # Directory to write plots to.
+    plot_dir: str = "plots/"
     # Number of steps to print training progress after.
     print_freq: int = 20
+
 
 @dataclass
 class VideoMAETaskConfig:
@@ -109,78 +112,218 @@ class VideoMAEExperimentConfig:
 
 def create_video_mae_experiment_config_from_file(config_file_path):
     """Convert config file to an experiment config for VideoMAE."""
+
     # Create fake args which will not error on attribute miss so we can reuse existing function.
     class FakeArgs:
         def __init__(self):
             self.config_file = config_file_path
-        
+
         def __getattr__(self, item):
             return None
-        
+
     return create_video_mae_experiment_config(FakeArgs())
 
 
 def create_video_mae_experiment_config(args: Namespace | str):
     """Convert command line arguments and config file to an experiment config for VideoMAE.
-    
+
     Config values can be overridden by command line, otherwise use the config file.
     Boolean values can only be overriden to True as of now, to set a flag False do so in the config file.
-    
-    Can optionally pass 
+
+    Can optionally pass
     """
-    config = configparser.ConfigParser(converters={'list': json.loads})
+    config = configparser.ConfigParser(converters={"list": json.loads})
     config.read(args.config_file)
-    
+
     return VideoMAEExperimentConfig(
         video_mae_task_config=VideoMAETaskConfig(
             vit_config=ViTConfig(
-                dim=args.dim if args.dim else config.getint("VideoMAETaskConfig.ViTConfig", "dim"),
-                decoder_embed_dim=args.decoder_embed_dim if args.decoder_embed_dim else config.getint("VideoMAETaskConfig.ViTConfig", "decoder_embed_dim"),
-                mlp_ratio=args.mlp_ratio if args.mlp_ratio else config.getfloat("VideoMAETaskConfig.ViTConfig", "mlp_ratio"),
-                depth=args.depth if args.depth else config.getint("VideoMAETaskConfig.ViTConfig", "depth"),
-                decoder_depth=args.decoder_depth if args.decoder_depth else config.getint("VideoMAETaskConfig.ViTConfig", "decoder_depth"),
-                num_heads=args.num_heads if args.num_heads else config.getint("VideoMAETaskConfig.ViTConfig", "num_heads"),
-                decoder_num_heads=args.decoder_num_heads if args.decoder_num_heads else config.getint("VideoMAETaskConfig.ViTConfig", "decoder_num_heads"),
-                patch_size=args.patch_size if args.patch_size else config.getint("VideoMAETaskConfig.ViTConfig", "patch_size"),
-                frame_patch_size=args.frame_patch_size if args.frame_patch_size else config.getint("VideoMAETaskConfig.ViTConfig", "frame_patch_size"),
-                use_cls_token=args.use_cls_token if args.use_cls_token else config.getboolean("VideoMAETaskConfig.ViTConfig", "use_cls_token"),
-                sep_pos_embed=args.sep_pos_embed if args.sep_pos_embed else config.getboolean("VideoMAETaskConfig.ViTConfig", "sep_pos_embed"),
-                trunc_init=args.trunc_init if args.trunc_init else config.getboolean("VideoMAETaskConfig.ViTConfig", "trunc_init"),
-                no_qkv_bias=args.no_qkv_bias if args.no_qkv_bias else config.getboolean("VideoMAETaskConfig.ViTConfig", "no_qkv_bias"),
+                dim=(
+                    args.dim
+                    if args.dim
+                    else config.getint("VideoMAETaskConfig.ViTConfig", "dim")
+                ),
+                decoder_embed_dim=(
+                    args.decoder_embed_dim
+                    if args.decoder_embed_dim
+                    else config.getint(
+                        "VideoMAETaskConfig.ViTConfig", "decoder_embed_dim"
+                    )
+                ),
+                mlp_ratio=(
+                    args.mlp_ratio
+                    if args.mlp_ratio
+                    else config.getfloat("VideoMAETaskConfig.ViTConfig", "mlp_ratio")
+                ),
+                depth=(
+                    args.depth
+                    if args.depth
+                    else config.getint("VideoMAETaskConfig.ViTConfig", "depth")
+                ),
+                decoder_depth=(
+                    args.decoder_depth
+                    if args.decoder_depth
+                    else config.getint("VideoMAETaskConfig.ViTConfig", "decoder_depth")
+                ),
+                num_heads=(
+                    args.num_heads
+                    if args.num_heads
+                    else config.getint("VideoMAETaskConfig.ViTConfig", "num_heads")
+                ),
+                decoder_num_heads=(
+                    args.decoder_num_heads
+                    if args.decoder_num_heads
+                    else config.getint(
+                        "VideoMAETaskConfig.ViTConfig", "decoder_num_heads"
+                    )
+                ),
+                patch_size=(
+                    args.patch_size
+                    if args.patch_size
+                    else config.getint("VideoMAETaskConfig.ViTConfig", "patch_size")
+                ),
+                frame_patch_size=(
+                    args.frame_patch_size
+                    if args.frame_patch_size
+                    else config.getint(
+                        "VideoMAETaskConfig.ViTConfig", "frame_patch_size"
+                    )
+                ),
+                use_cls_token=(
+                    args.use_cls_token
+                    if args.use_cls_token
+                    else config.getboolean(
+                        "VideoMAETaskConfig.ViTConfig", "use_cls_token"
+                    )
+                ),
+                sep_pos_embed=(
+                    args.sep_pos_embed
+                    if args.sep_pos_embed
+                    else config.getboolean(
+                        "VideoMAETaskConfig.ViTConfig", "sep_pos_embed"
+                    )
+                ),
+                trunc_init=(
+                    args.trunc_init
+                    if args.trunc_init
+                    else config.getboolean("VideoMAETaskConfig.ViTConfig", "trunc_init")
+                ),
+                no_qkv_bias=(
+                    args.no_qkv_bias
+                    if args.no_qkv_bias
+                    else config.getboolean(
+                        "VideoMAETaskConfig.ViTConfig", "no_qkv_bias"
+                    )
+                ),
             ),
-            encoder_mask_ratio=args.encoder_mask_ratio if args.encoder_mask_ratio else config.getfloat("VideoMAETaskConfig", "encoder_mask_ratio"),
-            pct_masks_to_decode=args.pct_masks_to_decode if args.pct_masks_to_decode else config.getfloat("VideoMAETaskConfig", "pct_masks_to_decode"),
-            norm_pix_loss=args.norm_pix_loss if args.norm_pix_loss else config.getboolean("VideoMAETaskConfig", "norm_pix_loss"),
+            encoder_mask_ratio=(
+                args.encoder_mask_ratio
+                if args.encoder_mask_ratio
+                else config.getfloat("VideoMAETaskConfig", "encoder_mask_ratio")
+            ),
+            pct_masks_to_decode=(
+                args.pct_masks_to_decode
+                if args.pct_masks_to_decode
+                else config.getfloat("VideoMAETaskConfig", "pct_masks_to_decode")
+            ),
+            norm_pix_loss=(
+                args.norm_pix_loss
+                if args.norm_pix_loss
+                else config.getboolean("VideoMAETaskConfig", "norm_pix_loss")
+            ),
         ),
         trainer_config=TrainerConfig(
-            max_learning_rate=args.max_learning_rate if args.max_learning_rate else config.getfloat("TrainerConfig", "max_learning_rate"),
-            num_epochs=args.num_epochs if args.num_epochs else config.getint("TrainerConfig", "num_epochs"),
+            max_learning_rate=(
+                args.max_learning_rate
+                if args.max_learning_rate
+                else config.getfloat("TrainerConfig", "max_learning_rate")
+            ),
+            num_epochs=(
+                args.num_epochs
+                if args.num_epochs
+                else config.getint("TrainerConfig", "num_epochs")
+            ),
         ),
         ecog_data_config=ECoGDataConfig(
             norm=args.norm if args.norm else config.get("ECoGDataConfig", "norm"),
-            batch_size=args.batch_size if args.batch_size else config.getint("ECoGDataConfig", "batch_size"),
-            data_size=args.data_size if args.data_size else config.getfloat("ECoGDataConfig", "data_size"),
+            batch_size=(
+                args.batch_size
+                if args.batch_size
+                else config.getint("ECoGDataConfig", "batch_size")
+            ),
+            data_size=(
+                args.data_size
+                if args.data_size
+                else config.getfloat("ECoGDataConfig", "data_size")
+            ),
             env=args.env if args.env else config.getboolean("ECoGDataConfig", "env"),
-            bands=args.bands if args.bands else config.getlist("ECoGDataConfig", "bands"),
-            original_fs = args.original_fs if args.original_fs else config.getint("ECoGDataConfig", "original_fs"),
-            new_fs=args.new_fs if args.new_fs else config.getint("ECoGDataConfig", "new_fs"),
-            dataset_path=args.dataset_path if args.dataset_path else config.get("ECoGDataConfig", "dataset_path"),
-            train_data_proportion=args.train_data_proportion if args.train_data_proportion else config.getfloat("ECoGDataConfig", "train_data_proportion"),
-            sample_length=args.sample_length if args.sample_length else config.getint("ECoGDataConfig", "sample_length"),
-            shuffle=args.shuffle if args.shuffle else config.getboolean("ECoGDataConfig", "shuffle"),
-            test_loader=args.test_loader if args.test_loader else config.getboolean("ECoGDataConfig", "test_loader"),
+            bands=(
+                args.bands if args.bands else config.getlist("ECoGDataConfig", "bands")
+            ),
+            original_fs=(
+                args.original_fs
+                if args.original_fs
+                else config.getint("ECoGDataConfig", "original_fs")
+            ),
+            new_fs=(
+                args.new_fs
+                if args.new_fs
+                else config.getint("ECoGDataConfig", "new_fs")
+            ),
+            dataset_path=(
+                args.dataset_path
+                if args.dataset_path
+                else config.get("ECoGDataConfig", "dataset_path")
+            ),
+            train_data_proportion=(
+                args.train_data_proportion
+                if args.train_data_proportion
+                else config.getfloat("ECoGDataConfig", "train_data_proportion")
+            ),
+            sample_length=(
+                args.sample_length
+                if args.sample_length
+                else config.getint("ECoGDataConfig", "sample_length")
+            ),
+            shuffle=(
+                args.shuffle
+                if args.shuffle
+                else config.getboolean("ECoGDataConfig", "shuffle")
+            ),
+            test_loader=(
+                args.test_loader
+                if args.test_loader
+                else config.getboolean("ECoGDataConfig", "test_loader")
+            ),
         ),
         logging_config=LoggingConfig(
-            event_log_dir=args.event_log_dir if args.event_log_dir else config.get("LoggingConfig", "event_log_dir"),
-            print_freq=args.print_freq if args.print_freq else config.getint("LoggingConfig", "print_freq"),
+            event_log_dir=(
+                args.event_log_dir
+                if args.event_log_dir
+                else config.get("LoggingConfig", "event_log_dir")
+            ),
+            plot_dir=(
+                args.plot_dir
+                if args.plot_dir
+                else config.get("LoggingConfig", "plot_dir")
+            ),
+            print_freq=(
+                args.print_freq
+                if args.print_freq
+                else config.getint("LoggingConfig", "print_freq")
+            ),
         ),
-        job_name=args.job_name if args.job_name else config.get("JobDetails", "job_name", fallback="train-job"),
+        job_name=(
+            args.job_name
+            if args.job_name
+            else config.get("JobDetails", "job_name", fallback="train-job")
+        ),
     )
 
 
 def write_config_file(path: str, experiment_config: VideoMAEExperimentConfig):
     """Writes config to path as a .ini file.
-    
+
     Args:
         path (str): path to write file to.
         experiment_config (VideoMAEExperimentConfig): Config to write in .ini format.
@@ -192,8 +335,15 @@ def write_config_file(path: str, experiment_config: VideoMAEExperimentConfig):
         for key, value in data.items():
             config[section_name][key] = str(value)
 
-    add_section("VideoMAETaskConfig.ViTConfig", asdict(experiment_config.video_mae_task_config.vit_config))
-    video_mae_task_config = {k: v for k, v in asdict(experiment_config.video_mae_task_config).items() if k != 'vit_config'}
+    add_section(
+        "VideoMAETaskConfig.ViTConfig",
+        asdict(experiment_config.video_mae_task_config.vit_config),
+    )
+    video_mae_task_config = {
+        k: v
+        for k, v in asdict(experiment_config.video_mae_task_config).items()
+        if k != "vit_config"
+    }
     add_section("VideoMAETaskConfig", video_mae_task_config)
     add_section("ECoGDataConfig", asdict(experiment_config.ecog_data_config))
     add_section("LoggingConfig", asdict(experiment_config.logging_config))
@@ -201,5 +351,5 @@ def write_config_file(path: str, experiment_config: VideoMAEExperimentConfig):
     config["JobDetails"] = {"job_name": experiment_config.job_name}
 
     # Write the configuration to the file
-    with open(path, 'w') as configfile:
+    with open(path, "w") as configfile:
         config.write(configfile)
