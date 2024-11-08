@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class ECoGDataset(torch.utils.data.IterableDataset):
+    CACHE_FILE = "loader_cache.json"
 
     def __init__(self, path: str, config: ECoGDataConfig):
         self.config = config
@@ -27,14 +28,19 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.new_fs = config.new_fs
         self.sample_secs = config.sample_length
 
-        cache_path = f"{path}.cache"
-        # Try to load from cache first to save time
-        if os.path.exists(cache_path):
-            with open(cache_path, "r") as f:
+        # Load or initialize cache
+        if os.path.exists(self.CACHE_FILE):
+            with open(self.CACHE_FILE, "r") as f:
                 cache = json.load(f)
-                self.max_samples = cache["max_samples"]
-                self.means = np.array(cache["means"])
-                self.stds = np.array(cache["stds"])
+        else:
+            cache = {}
+
+        # Check if this path is in cache
+        if self.path in cache:
+            cached_data = cache[self.path]
+            self.max_samples = cached_data["max_samples"]
+            self.means = np.array(cached_data["means"])
+            self.stds = np.array(cached_data["stds"])
         else:
             # Compute and cache if not found
             signal = self._load_grid_data()
@@ -42,13 +48,15 @@ class ECoGDataset(torch.utils.data.IterableDataset):
 
             self.means, self.stds = get_signal_stats(signal)
 
-            # Save to cache
-            cache = {
+            # Update cache
+            cache[self.path] = {
                 "max_samples": float(self.max_samples),
-                "means": self.means,
-                "stds": self.stds,
+                "means": self.means.tolist() if self.means is not None else None,
+                "stds": self.stds.tolist() if self.stds is not None else None,
             }
-            with open(cache_path, "w") as f:
+
+            # Save updated cache
+            with open(self.CACHE_FILE, "w") as f:
                 json.dump(cache, f)
 
         self.index = 0
