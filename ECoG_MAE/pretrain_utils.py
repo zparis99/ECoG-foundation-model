@@ -141,7 +141,7 @@ def test_single_epoch(
         running_correlation = 0.0
         running_band_correlations = torch.zeros(len(config.ecog_data_config.bands))
         running_channel_correlations = torch.zeros(
-            len(constants.GRID_SIZE * constants.GRID_SIZE)
+            constants.GRID_SIZE * constants.GRID_SIZE
         )
         for test_i, batch in enumerate(test_dl):
             signal = batch.to(device)
@@ -173,10 +173,23 @@ def test_single_epoch(
                     epoch,
                     config.logging_config.plot_dir,
                     log_writer=log_writer,
-                    t_patch_size=config.video_mae_task_config.vit_config.t_patch_size,
+                    t_patch_size=config.video_mae_task_config.vit_config.frame_patch_size,
+                )
+
+                # Save a reconstruction plot for scaled signal as well.
+                save_reconstruction_plot(
+                    signal_np,
+                    pred_signal_np,
+                    epoch,
+                    config.logging_config.plot_dir,
+                    log_writer=log_writer,
+                    t_patch_size=config.video_mae_task_config.vit_config.frame_patch_size,
+                    tag="signal_reconstruction_scaled",
+                    scale_output=True,
                 )
 
             running_loss += loss.item()
+            correlations = correlations.detach().cpu()
             running_correlation += correlations.mean().item()
             running_band_correlations += correlations.view(
                 len(config.ecog_data_config.bands), -1
