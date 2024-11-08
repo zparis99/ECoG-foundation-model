@@ -1,3 +1,5 @@
+import os
+
 import torch
 from torch.utils.data import DataLoader
 from mask import *
@@ -167,11 +169,15 @@ def test_single_epoch(
 
                 pred_signal = model.unpatchify(pred)
                 pred_signal_np = pred_signal.detach().cpu().numpy()
+
+                plot_path = os.path.join(
+                    config.logging_config.plot_dir, config.job_name
+                )
                 save_reconstruction_plot(
                     signal_np,
                     pred_signal_np,
                     epoch,
-                    config.logging_config.plot_dir,
+                    plot_path,
                     log_writer=log_writer,
                     t_patch_size=config.video_mae_task_config.vit_config.frame_patch_size,
                 )
@@ -181,7 +187,7 @@ def test_single_epoch(
                     signal_np,
                     pred_signal_np,
                     epoch,
-                    config.logging_config.plot_dir,
+                    plot_path,
                     log_writer=log_writer,
                     t_patch_size=config.video_mae_task_config.vit_config.frame_patch_size,
                     tag="signal_reconstruction_scaled",
