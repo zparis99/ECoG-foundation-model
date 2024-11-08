@@ -9,6 +9,7 @@ from mne_bids import BIDSPath
 from pyedflib import highlevel
 import torch
 import logging
+import json
 
 from config import ECoGDataConfig, VideoMAEExperimentConfig
 from utils import preprocess_neural_data, get_signal_stats
@@ -26,26 +27,41 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.new_fs = config.new_fs
         self.sample_secs = config.sample_length
 
-        # Temporarily load data to get stats. Don't maintain pointer though to avoid RAM overuse.
-        signal = self._load_grid_data()
-        # since we take sample_length sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by sample_length.
-        # Optionally can configure max_samples directly as well.
-        self.max_samples = signal.shape[1] / self.fs / config.sample_length
-        if config.norm == "hour":
-            self.means, self.stds = get_signal_stats(signal)
+        cache_path = f"{path}.cache"
+        # Try to load from cache first to save time
+        if os.path.exists(cache_path):
+            with open(cache_path, "r") as f:
+                cache = json.load(f)
+                self.max_samples = cache["max_samples"]
+                self.means = np.array(cache["means"])
+                self.stds = np.array(cache["stds"])
         else:
-            self.means = None
-            self.stds = None
+            # Compute and cache if not found
+            signal = self._load_grid_data()
+            self.max_samples = signal.shape[1] / self.fs / config.sample_length
+
+            self.means, self.stds = get_signal_stats(signal)
+
+            # Save to cache
+            cache = {
+                "max_samples": float(self.max_samples),
+                "means": self.means,
+                "stds": self.stds,
+            }
+            with open(cache_path, "w") as f:
+                json.dump(cache, f)
 
         self.index = 0
-    
+
     def __len__(self):
         return int(self.max_samples)
 
     def __iter__(self):
         # Load data into ram on first iteration.
         if self.index == 0:
-            logger.debug("-----------------------------------------------------------------------------")
+            logger.debug(
+                "-----------------------------------------------------------------------------"
+            )
             logger.debug("Reading new file: %s", self.path)
             self.signal = self._load_grid_data()
         # this is to make sure we stop streaming from our dataset after the max number of samples is reached
@@ -56,7 +72,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             if end_sample > self.signal.shape[1]:
                 self.index = self.max_samples
                 break
-                
+
             yield self.sample_data(start_sample, end_sample)
             self.index += 1
         # this is to reset the counter after we looped through the dataset so that streaming starts at 0 in the next epoch,
@@ -120,11 +136,13 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             # first we check whether the channel is included
             if not np.isin(channel, raw.info.ch_names):
                 # if not we insert 0 padding and shift upwards
-                sig = np.insert(sig, i, np.ones((n_samples), dtype=np.float32) * np.nan, axis=0)
+                sig = np.insert(
+                    sig, i, np.ones((n_samples), dtype=np.float32) * np.nan, axis=0
+                )
 
         # delete items that were shifted upwards
         sig = sig[:64, :]
-        
+
         # Make sure signal is float32
         sig = np.float32(sig)
 
@@ -209,7 +227,8 @@ def get_dataset_path_info(
             {
                 "name": data_path,
                 "num_samples": int(
-                    highlevel.read_edf_header(edf_file=data_path)["Duration"] / sample_length
+                    highlevel.read_edf_header(edf_file=data_path)["Duration"]
+                    / sample_length
                 ),
             }
         )
@@ -223,7 +242,9 @@ def get_dataset_path_info(
     return split_filepaths, num_samples, pd.DataFrame(sample_desc)
 
 
-def _create_dataloader(root: str, data_files_df: pd.DataFrame, ecog_data_config: ECoGDataConfig) -> tuple[torch.utils.data.DataLoader, int, pd.DataFrame]:
+def _create_dataloader(
+    root: str, data_files_df: pd.DataFrame, ecog_data_config: ECoGDataConfig
+) -> tuple[torch.utils.data.DataLoader, int, pd.DataFrame]:
     """Given a dataframe containing the BIDS data info in a dataset and the data config, create a dataloader and associated information.
 
     Args:
@@ -237,17 +258,14 @@ def _create_dataloader(root: str, data_files_df: pd.DataFrame, ecog_data_config:
     filepaths, num_samples, sample_desc = get_dataset_path_info(
         ecog_data_config.sample_length, root, data_files_df
     )
-    datasets = [
-        ECoGDataset(train_path, ecog_data_config)
-        for train_path in filepaths
-    ]
+    datasets = [ECoGDataset(train_path, ecog_data_config) for train_path in filepaths]
     dataset_combined = torch.utils.data.ChainDataset(datasets)
     dataloader = torch.utils.data.DataLoader(
         dataset_combined, batch_size=ecog_data_config.batch_size
     )
-    
+
     return dataloader, num_samples, sample_desc
-    
+
 
 def dl_setup(
     config: VideoMAEExperimentConfig,
@@ -276,9 +294,13 @@ def dl_setup(
         data,
         config.ecog_data_config.train_data_proportion,
     )
-    
-    train_dl, num_train_samples, train_samples_desc = _create_dataloader(root, train_data, config.ecog_data_config)
-    test_dl, _, test_samples_desc = _create_dataloader(root, test_data, config.ecog_data_config)
+
+    train_dl, num_train_samples, train_samples_desc = _create_dataloader(
+        root, train_data, config.ecog_data_config
+    )
+    test_dl, _, test_samples_desc = _create_dataloader(
+        root, test_data, config.ecog_data_config
+    )
 
     dir = os.getcwd() + f"/results/samples/"
     if not os.path.exists(dir):
