@@ -48,8 +48,6 @@ def train_model(
     torch.cuda.empty_cache()
     model.to(device)
 
-    num_frames = config.ecog_data_config.sample_length * config.ecog_data_config.new_fs
-
     # if config.trainer_config.learning_rate == None:
     #     model, optimizer, train_dl, lr_scheduler = accelerator.prepare(
     #         model, optimizer, train_dl, lr_scheduler

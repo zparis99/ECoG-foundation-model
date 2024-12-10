@@ -77,7 +77,6 @@ def preprocess_neural_data(
                 4, freqs, btype="bandpass", analog=False, output="sos", fs=fs
             )
             filtered_signal[i] = scipy.signal.sosfiltfilt(sos, signal)
-            filtered_signal[i] = np.abs(scipy.signal.hilbert(filtered_signal[i]))
     else:
         # Add band axis of size 1 for non-filtered data.
         filtered_signal = np.expand_dims(signal, axis=0)
@@ -89,22 +88,28 @@ def preprocess_neural_data(
     # h = height of grid (currently 8)
     # w = width of grid (currently 8)
     preprocessed_signal = rearrange(
-        np.array(resampled, dtype=np.float32), "c (h w) t -> c t h w", h=constants.GRID_SIZE, w=constants.GRID_SIZE
+        np.array(resampled, dtype=np.float32),
+        "c (h w) t -> c t h w",
+        h=constants.GRID_SIZE,
+        w=constants.GRID_SIZE,
     )
 
     # Zero-pad if sample is too short.
     expected_sample_length = sample_secs * new_fs
     if preprocessed_signal.shape[1] < expected_sample_length:
-        padding = np.ones(
-            (
-                preprocessed_signal.shape[0],
-                expected_sample_length - preprocessed_signal.shape[1],
-                1,
-                8,
-                8,
-            ),
-            dtype=dtype,
-        ) * np.nan
+        padding = (
+            np.ones(
+                (
+                    preprocessed_signal.shape[0],
+                    expected_sample_length - preprocessed_signal.shape[1],
+                    1,
+                    8,
+                    8,
+                ),
+                dtype=dtype,
+            )
+            * np.nan
+        )
         if pad_before_sample:
             preprocessed_signal = np.concatenate((padding, preprocessed_signal), axis=1)
         else:
@@ -312,7 +317,7 @@ def get_signal_correlations(signal_a, signal_b):
     Args:
         signal_a (tensor): shape [batch, num_electrodes, channels, observations]
         signal_b (tensor): shape [batch, num_electrodes, channels, observations]
-        
+
     Returns:
         tensor of shape [num_electrodes, channels] where each entry is the correlation found between
         the two signals for that electrode and channel.
@@ -320,15 +325,17 @@ def get_signal_correlations(signal_a, signal_b):
     correlation_matrix = torch.zeros(
         signal_a.shape[0], signal_a.shape[1], signal_a.shape[2]
     ).fill_(torch.nan)
-    
+
     for batch in range(signal_a.shape[0]):
         for electrode in range(signal_a.shape[1]):
             for channel in range(signal_a.shape[2]):
                 correlation_matrix[batch, electrode, channel] = torch.corrcoef(
-                    torch.stack([
-                        signal_a[batch, electrode, channel],
-                        signal_b[batch, electrode, channel],
-                    ])
+                    torch.stack(
+                        [
+                            signal_a[batch, electrode, channel],
+                            signal_b[batch, electrode, channel],
+                        ]
+                    )
                 )[0, 1]
-                
+
     return correlation_matrix.mean(dim=0)
