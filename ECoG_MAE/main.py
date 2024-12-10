@@ -1,21 +1,18 @@
-import logging
 import sys
 from parser import arg_parser
 from ecog_setup import system_setup, model_setup
 from config import create_video_mae_experiment_config
 from loader import dl_setup
+from mae_st_util.logging import setup_logging
 from models import *
-from tests import test_loader, test_model
+from tests import test_loader
 from train import train_model
-
-logging.basicConfig(
-    format='%(asctime)s %(levelname)-8s %(message)s',
-    level=logging.INFO,
-    datefmt='%Y-%m-%d %H:%M:%S')
 
 
 def main(args):
-    
+
+    setup_logging()
+
     experiment_config = create_video_mae_experiment_config(args)
 
     accelerator, device, data_type, local_rank = system_setup()
