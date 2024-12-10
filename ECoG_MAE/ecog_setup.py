@@ -7,8 +7,8 @@ import numpy as np
 from accelerate import Accelerator, DeepSpeedPlugin
 
 import utils
-from models import *
 from config import VideoMAEExperimentConfig
+import constants
 from mae_st_util.models_mae import MaskedAutoencoderViT
 
 
@@ -75,15 +75,22 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
 
     frame_patch_size = model_config.frame_patch_size
     num_patches = int(  # Defining the number of patches
-        constants.GRID_SIZE ** 2 * num_frames // model_config.patch_size // frame_patch_size
+        constants.GRID_SIZE**2
+        * num_frames
+        // model_config.patch_size
+        // frame_patch_size
     )
 
-    num_encoder_patches = int(num_patches * (1 - config.video_mae_task_config.encoder_mask_ratio))
-    num_decoder_patches = int(num_patches * config.video_mae_task_config.pct_masks_to_decode)
+    num_encoder_patches = int(
+        num_patches * (1 - config.video_mae_task_config.encoder_mask_ratio)
+    )
+    num_decoder_patches = int(
+        num_patches * config.video_mae_task_config.pct_masks_to_decode
+    )
     print("num_patches", num_patches)
     print("num_encoder_patches", num_encoder_patches)
     print("num_decoder_patches", num_decoder_patches)
-        
+
     model = MaskedAutoencoderViT(
         img_size=constants.GRID_SIZE,
         patch_size=model_config.patch_size,
@@ -128,13 +135,17 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
         },
     ]
 
-    optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=config.trainer_config.max_learning_rate)
+    optimizer = torch.optim.AdamW(
+        opt_grouped_parameters, lr=config.trainer_config.max_learning_rate
+    )
 
     lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=config.trainer_config.max_learning_rate,
         epochs=config.trainer_config.num_epochs,
-        steps_per_epoch=math.ceil(num_train_samples / config.ecog_data_config.batch_size),
+        steps_per_epoch=math.ceil(
+            num_train_samples / config.ecog_data_config.batch_size
+        ),
     )
 
     print("\nDone with model preparations!")
