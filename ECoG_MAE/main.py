@@ -4,7 +4,6 @@ from ecog_setup import system_setup, model_setup
 from config import create_video_mae_experiment_config
 from loader import dl_setup
 from mae_st_util.logging import setup_logging
-from models import *
 from tests import test_loader
 from train import train_model
 
