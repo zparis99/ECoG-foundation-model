@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
 from config import VideoMAEExperimentConfig, write_config_file
-from ECoG_MAE.pretrain_engine import train_single_epoch, test_single_epoch
+from pretrain_engine import train_single_epoch, test_single_epoch
 
 
 logger = logging.getLogger(__name__)
