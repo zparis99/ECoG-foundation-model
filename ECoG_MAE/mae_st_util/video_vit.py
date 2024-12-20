@@ -166,3 +166,53 @@ class Block(nn.Module):
         x = x + self.drop_path(self.attn(self.norm1(x)))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
+
+
+# TODO: Test this.
+class MaskedBatchNorm(nn.Module):
+    def __init__(self, n_channels, scale_factor=1e6):
+        """
+        Initialize norm class.
+
+        n_channels: The number of channels (bands) in our data.
+        scale_factor: How much to scale the input data by before normalizing. Set value so that
+            the variance is roughly >0.1 and <~ 100. Needed with our data to maintain numerical stability.
+        """
+        super().__init__()
+        self.bn = nn.BatchNorm1d(n_channels, affine=False)
+        self.scale_factor = scale_factor
+
+    def forward(self, x, mask):
+        """
+        Normalize input along the channel axis while ignoring masked out values. Running statistics are tracked.
+
+        x: batch tensor of shape [batch, channels, frames, height, width].
+        mask: tensor of shape [height, width] denoting which electrodes are masked. Those with False will be removed.
+        """
+        # Code adapted from: https://discuss.pytorch.org/t/batchnorm-for-different-sized-samples-in-batch/44251/8
+        B, C, T, H, W = x.shape
+        x = x.reshape(B, C, T * H * W)
+        x = x * self.scale_factor
+
+        if mask is None:
+            return self.bn(x).view(B, C, T, H, W)
+
+        # We don't want to include padded values in the normalization process so we take advantage of the fact
+        # that batch norm does not differentiate between batch and time axis. If we just used the mask on the time
+        # axis than we would have a jagged tensor but here we can flatten it out and remove all masked values.
+        # Swap time and channel axes to set the batch and time axis next to each other.
+        flattened_x = x.permute(0, 2, 1).reshape(B * T * H * W, C, 1)
+        # Make mask align with flattened out x array.
+        expanded_mask = mask.unsqueeze(0).repeat((B * T, 1, 1)).view(B, 1, T * H * W)
+        flattened_mask = expanded_mask.reshape(-1, 1, 1) > 0
+        # Apply mask.
+        masked_values = torch.masked_select(flattened_x, flattened_mask).reshape(
+            -1, C, 1
+        )
+        normed = self.bn(masked_values)
+        # Scatter in normalized values and fix shape back to original batch.
+        scattered = flattened_x.masked_scatter(flattened_mask, normed)
+        backshaped = (
+            scattered.reshape(B, T * H * W, C).permute(0, 2, 1).view(B, C, T, H, W)
+        )
+        return backshaped
