@@ -7,6 +7,7 @@ import math
 import os
 from torch.utils.tensorboard import SummaryWriter
 from matplotlib.figure import Figure
+from utils import apply_mask_to_batch
 
 
 def scale_signal_minmax(signal, reference):
@@ -55,6 +56,7 @@ def plot_multi_band_reconstruction(
     width_idx=0,
     epoch=0,
     scale_output=False,
+    seen_signal=None,
 ):
     """
     Plot original and reconstructed signals for all bands in a subplot grid.
@@ -78,6 +80,8 @@ def plot_multi_band_reconstruction(
         Current training epoch (for title)
     scale_output : bool
         Whether to scale the reconstructed signal to match the original
+    seen_signal: Optional[np.ndarray]
+        Optional signal which has nan values filled for the masked out portion of the signal.
 
     Returns:
     --------
@@ -103,6 +107,7 @@ def plot_multi_band_reconstruction(
     for band_idx in range(num_bands):
         # Extract signals for this band
         original = original_signal[batch_idx, band_idx, :, height_idx, width_idx]
+        masked_electrode = seen_signal[batch_idx, band_idx, :, height_idx, width_idx]
         reconstructed_downsampled = reconstructed_signal[
             batch_idx, band_idx, :, height_idx, width_idx
         ]
@@ -120,6 +125,15 @@ def plot_multi_band_reconstruction(
         # Plot signals
         time_steps = np.arange(len(original))
         ax.plot(time_steps, original, label="Original", color="blue", alpha=0.7)
+        if seen_signal is not None:
+            seen_electrode = seen_signal[batch_idx, band_idx, :, height_idx, width_idx]
+            ax.plot(
+                time_steps,
+                seen_electrode,
+                label="Seen Signal",
+                color="yellow",
+                alpha=0.8,
+            )
         ax.plot(
             time_steps,
             reconstructed,
