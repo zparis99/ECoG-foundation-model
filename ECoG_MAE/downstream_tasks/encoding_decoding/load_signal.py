@@ -36,11 +36,6 @@ class EncodingDecodingDataset:
         # since we take sample_length sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by sample_length.
         # Optionally can configure max_samples directly as well.
         self.max_samples = self.signal.shape[1] / self.fs / config.sample_length
-        if config.norm == "hour":
-            self.means, self.stds = get_signal_stats(self.signal)
-        else:
-            self.means = None
-            self.stds = None
 
         self.index = 0
 
@@ -109,15 +104,13 @@ class EncodingDecodingDataset:
             lag_start_time = word_data.loc["onset"] + self.lag
             lag_start_sample = int(lag_start_time / 1000 * self.fs)
             lag_end_sample = lag_start_sample + self.fs * self.sample_secs
-            
+
             # If we are gathering a sample from before the start of the signal or ends after the signal continue.
             if lag_start_sample < 0 or lag_end_sample > self.signal.shape[1]:
                 self.index += 1
                 continue
-                
-            curr_sample = self.signal[
-                :, lag_start_sample : lag_end_sample
-            ]
+
+            curr_sample = self.signal[:, lag_start_sample:lag_end_sample]
 
             preprocessed_signal = preprocess_neural_data(
                 curr_sample,

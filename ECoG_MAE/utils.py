@@ -19,6 +19,28 @@ def seed_everything(seed=0, cudnn_deterministic=True):
     torch.cuda.manual_seed_all(seed)
 
 
+# TODO: Add tests
+def apply_mask_to_batch(model, batch, mask):
+    """Replaces values in batch with nan when mask is False.
+    model: MaskedAutencoderViT
+    mask: (batch_size, frames // frame_patch_size)
+    batch: (batch_size, num_channels, frames, electrode_height, electrode_width)
+    """
+    batch_patch = model.patchify(batch)
+    # Mask is for every frame_patch_size frames, so expand to align with batch
+    # tensor and fill in masked out information with nan.
+    B, t = mask.shape
+    _, T, P = batch_patch.shape
+    frame_patch_size = T // t
+    # Repeats mask values to align with batch dimensions.
+    mask = (
+        mask.repeat_interleave(frame_patch_size * P, axis=1)
+        .view(B, T, P)
+        .to(torch.bool)
+    )
+    return model.unpatchify(batch_patch.masked_fill(mask, torch.nan))
+
+
 # TODO: Test this function.
 def preprocess_neural_data(
     signal: np.array,
@@ -29,6 +51,7 @@ def preprocess_neural_data(
     norm: Optional[str] = None,
     means: Optional[np.array] = None,
     stds: Optional[np.array] = None,
+    env: Optional[bool] = False,
     pad_before_sample: bool = False,
     dtype=np.float32,
 ) -> np.array:
@@ -46,6 +69,7 @@ def preprocess_neural_data(
         norm (Optional[str], optional): If "hour" then will use the passed means and stds to normalize the signal. Defaults to None.
         means (Optional[np.array], optional): Of shape [num_electrodes]. Means for each electrode. Defaults to None.
         stds (Optional[np.array], optional): Of shape [num_electrodes]. Standard deviations for each electrode. Defaults to None.
+        env (Optional[bool]): If true then apply power envelope to signal after filtering. Else just return filtered signal.
         pad_before_sample (bool): If true then samples which are not the desired length will be padded with 0's before the actual extracted signal. Useful if sample is taken from the very start of the signal.
 
     Returns:
@@ -57,17 +81,6 @@ def preprocess_neural_data(
             c = freq bands
     """
 
-    def norm(input, ch_idx):
-        output = input - means[ch_idx] / stds[ch_idx]
-
-        return output
-
-    if norm == "hour":
-
-        # z-score signal for each channel separately
-        for i in range(0, 64):
-            signal[i, :] = norm(signal[i], i)
-
     # Extract frequency bands if provided.
     if bands:
         filtered_signal = np.zeros((len(bands), 64, signal.shape[1]))
@@ -77,6 +90,8 @@ def preprocess_neural_data(
                 4, freqs, btype="bandpass", analog=False, output="sos", fs=fs
             )
             filtered_signal[i] = scipy.signal.sosfiltfilt(sos, signal)
+            if env:
+                filtered_signal[i] = np.abs(scipy.signal.hilbert(filtered_signal[i]))
     else:
         # Add band axis of size 1 for non-filtered data.
         filtered_signal = np.expand_dims(signal, axis=0)

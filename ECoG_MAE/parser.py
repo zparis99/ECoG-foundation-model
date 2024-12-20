@@ -92,9 +92,6 @@ def arg_parser():
 
     # ECoGDataConfig parameters
     parser.add_argument(
-        "--norm", type=str, help="If 'batch' then will normalize data within a batch."
-    )
-    parser.add_argument(
         "--data-size",
         type=float,
         help="Percentage of data to include in training/testing.",

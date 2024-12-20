@@ -38,7 +38,6 @@ CONFIG_VALUES = {
         "norm_pix_loss": False,
     },
     "ECoGDataConfig": {
-        "norm": "hour",
         "data_size": 1.0,
         "batch_size": 64,
         "env": False,
@@ -147,7 +146,6 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
         "pct_masks_to_decode": 0.02,
         "norm_pix_loss": True,
         # ECoGDataConfig parameters
-        "norm": "minute",
         "data_size": 0.98,
         "batch_size": 63,
         "env": True,
@@ -244,7 +242,6 @@ def test_write_config_file(mocker, tmp_path):
             norm_pix_loss=True,
         ),
         ecog_data_config=ECoGDataConfig(
-            norm="batch",
             data_size=0.8,
             batch_size=128,
             env=True,

@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 import constants
 from config import ECoGDataConfig
 from mae_st_util.models_mae import MaskedAutoencoderViT
-from pretrain_utils import model_forward
+from pretrain_engine import model_forward
 
 EMBEDDING_DIM = 64
 FRAMES_PER_SAMPLE = 40

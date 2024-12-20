@@ -9,8 +9,6 @@ from argparse import Namespace
 # documenting the fields which can be configured.
 @dataclass
 class ECoGDataConfig:
-    # If 'batch' then will normalize data within a batch.
-    norm: str = None
     # Percentage of data to include in training/testing.
     data_size: float = 1.0
     # Batch size to train with.
@@ -245,7 +243,6 @@ def create_video_mae_experiment_config(args: Namespace | str):
             ),
         ),
         ecog_data_config=ECoGDataConfig(
-            norm=args.norm if args.norm else config.get("ECoGDataConfig", "norm"),
             batch_size=(
                 args.batch_size
                 if args.batch_size

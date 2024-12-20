@@ -35,24 +35,18 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         else:
             cache = {}
 
-        # Check if this path is in cache
+        # Check if this path is in cache, to save time.
         if self.path in cache:
             cached_data = cache[self.path]
             self.max_samples = cached_data["max_samples"]
-            self.means = np.array(cached_data["means"])
-            self.stds = np.array(cached_data["stds"])
         else:
             # Compute and cache if not found
             signal = self._load_grid_data()
             self.max_samples = signal.shape[1] / self.fs / config.sample_length
 
-            self.means, self.stds = get_signal_stats(signal)
-
             # Update cache
             cache[self.path] = {
                 "max_samples": float(self.max_samples),
-                "means": self.means.tolist() if self.means is not None else None,
-                "stds": self.stds.tolist() if self.stds is not None else None,
             }
 
             # Save updated cache
@@ -101,9 +95,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             self.new_fs,
             self.sample_secs,
             bands=self.bands,
-            norm=self.config.norm,
-            means=self.means,
-            stds=self.stds,
+            env=self.config.env,
         )
 
         end = t.time()
