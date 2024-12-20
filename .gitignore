@@ -5,6 +5,7 @@ cache
 checkpoints
 dataset
 dataset_full
+loader_cache.json
 
 *pth
 *.ipynb
