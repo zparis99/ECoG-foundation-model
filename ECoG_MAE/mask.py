@@ -7,7 +7,7 @@ def get_padding_mask(signal, device):
     Zero padding for channels that were rejected during preprocessing for bad signal quality
 
     Args:
-        signal: torch tensor of shape batch size * number of bands * timepoints * d * h * w
+        signal: torch tensor of shape batch size * number of bands * timepoints * h * w
         model: model object
         device: GPU device
 
@@ -15,11 +15,10 @@ def get_padding_mask(signal, device):
         padding_mask: boolean tensor of same shape as image indicating which parts of the signal are padded
 
     """
-    return (~torch.isnan(signal)).all(axis=2).all(axis=1).all(axis=0).to(device)
+    return (~torch.isnan(signal)).all((0, 1, 2)).to(device)
 
 
 def get_tube_mask(tube_mask_ratio, height, width, padding_mask, device):
-
     """
     Masking out a certain percentage of the original signal, the unmasked parts are fed into the encoder.
     When constructing the mask we are taking into account channels that are padded, such that only channels
@@ -38,11 +37,7 @@ def get_tube_mask(tube_mask_ratio, height, width, padding_mask, device):
     """
 
     # construct a tube mask of size number of channels
-    tube_mask = (
-        torch.zeros(height * width)
-        .to(device)
-        .to(torch.bool)
-    )
+    tube_mask = torch.zeros(height * width).to(device).to(torch.bool)
 
     # only select idx of existing channels here - the first len(number of channels) entries in the padding mask
     # indicate whether the channel contains a signal or not and we are only taking those which contain a signal (True) -
@@ -54,10 +49,7 @@ def get_tube_mask(tube_mask_ratio, height, width, padding_mask, device):
 
     # now we are taking 1 - tube_mask_ratio percent of all (shuffled) channels that contain signal
     tube_idx = mask_idx_candidates[
-        : int(
-            len(mask_idx_candidates)
-            * (1 - tube_mask_ratio)
-        )
+        : int(len(mask_idx_candidates) * (1 - tube_mask_ratio))
     ]
     # and set them to True, meaning they will be unmasked
     tube_mask[tube_idx] = True
@@ -93,7 +85,9 @@ def get_decoder_mask(decoder_mask_ratio, tube_mask, device):
     return decoder_mask
 
 
-def get_running_cell_mask(decoder_mask_ratio, frame_patch_size, num_frames, tube_mask, device):
+def get_running_cell_mask(
+    decoder_mask_ratio, frame_patch_size, num_frames, tube_mask, device
+):
     """
     Not implemented for now
     """
