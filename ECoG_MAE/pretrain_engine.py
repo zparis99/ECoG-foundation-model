@@ -19,20 +19,6 @@ def model_forward(model, signal, mask_ratio):
     return model(signal, mask_ratio=mask_ratio)
 
 
-def write_correlation_metrics(
-    log_writer, prefix_str, band_correlations, channel_correlations, epoch_1000x
-):
-    for i, band_correlation in enumerate(band_correlations):
-        log_writer.add_scalar(
-            f"bands/{prefix_str}_correlations_{i}", band_correlation, epoch_1000x
-        )
-
-    for i, channel_correlation in enumerate(channel_correlations):
-        log_writer.add_scalar(
-            f"channels/{prefix_str}_correlations_{i}", channel_correlation, epoch_1000x
-        )
-
-
 def train_single_epoch(
     train_dl: DataLoader,
     epoch: int,
@@ -48,6 +34,10 @@ def train_single_epoch(
     model.train()
 
     metric_logger = misc.MetricLogger(delimiter="  ")
+    metric_logger.add_meter(
+        "loss", misc.SmoothedValue(window_size=1, fmt="{value: 6f}")
+    )
+    metric_logger.add_meter("mse", misc.SmoothedValue(window_size=1, fmt="{value: 6f}"))
     metric_logger.add_meter("lr", misc.SmoothedValue(window_size=1, fmt="{value:.6f}"))
     metric_logger.add_meter(
         "cpu_mem", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
@@ -76,10 +66,10 @@ def train_single_epoch(
         model.initialize_mask(padding_mask)
 
         # TODO: Add more metrics using the other outputs.
-        loss, _, _, _, correlations = model_forward(
+        loss, mse, _, _, _, correlation = model_forward(
             model, signal, config.video_mae_task_config.encoder_mask_ratio
         )
-        if torch.isnan(loss):
+        if torch.isnan(mse):
             logger.error(
                 f"Got nan loss for index {train_i}. Ignoring and continuing..."
             )
@@ -90,13 +80,11 @@ def train_single_epoch(
         lr_scheduler.step()
 
         loss_value = loss.item()
-        correlation_value = correlations.mean().item()
-        band_correlations = correlations.view(
-            len(config.ecog_data_config.bands), -1
-        ).mean(dim=1)
-        channel_correlations = correlations.mean(dim=0).flatten()
+        mse_value = mse.item()
+        correlation_value = correlation.item()
 
         metric_logger.update(loss=loss_value)
+        metric_logger.update(mse=mse_value)
         metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
         metric_logger.update(cpu_mem_all=misc.cpu_mem_usage()[1])
         metric_logger.update(gpu_mem=misc.gpu_mem_usage())
@@ -112,16 +100,8 @@ def train_single_epoch(
             epoch_1000x = int((train_i / len(train_dl) + epoch) * 1000)
             log_writer.add_scalar("loss/train", loss_value, epoch_1000x)
             log_writer.add_scalar("lr", lr, epoch_1000x)
-
-            # Write overall correlation, individual channels, and bands.
+            log_writer.add_scalar("mse/train", mse_value, epoch_1000x)
             log_writer.add_scalar("correlation/train", correlation_value, epoch_1000x)
-            write_correlation_metrics(
-                log_writer,
-                "train",
-                band_correlations,
-                channel_correlations,
-                epoch_1000x,
-            )
 
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -140,11 +120,8 @@ def test_single_epoch(
     model.eval()
     with torch.no_grad():
         running_loss = 0.0
+        running_mse = 0.0
         running_correlation = 0.0
-        running_band_correlations = torch.zeros(len(config.ecog_data_config.bands))
-        running_channel_correlations = torch.zeros(
-            constants.GRID_SIZE * constants.GRID_SIZE
-        )
         for test_i, batch in enumerate(test_dl):
             signal = batch.to(device)
 
@@ -154,10 +131,10 @@ def test_single_epoch(
             model.initialize_mask(padding_mask)
 
             # TODO: Add more metrics using the other outputs.
-            loss, pred, _, _, correlations = model_forward(
+            loss, mse, pred, _, _, correlation = model_forward(
                 model, signal, config.video_mae_task_config.encoder_mask_ratio
             )
-            if torch.isnan(loss):
+            if torch.isnan(mse):
                 logger.error(
                     f"Got nan loss for index {test_i}. Ignoring and continuing..."
                 )
@@ -195,17 +172,12 @@ def test_single_epoch(
                 )
 
             running_loss += loss.item()
-            correlations = correlations.detach().cpu()
-            running_correlation += correlations.mean().item()
-            running_band_correlations += correlations.view(
-                len(config.ecog_data_config.bands), -1
-            ).mean(dim=1)
-            running_channel_correlations += correlations.mean(dim=0).flatten()
+            running_mse += mse.item()
+            running_correlation += correlation.item()
 
         loss_mean = running_loss / (test_i + 1)
+        mse_mean = running_mse / (test_i + 1)
         correlation_mean = running_correlation / (test_i + 1)
-        band_correlation_mean = running_band_correlations / (test_i + 1)
-        channel_correlation_mean = running_channel_correlations / (test_i + 1)
 
         # Write averages for test data.
         if log_writer is not None:
@@ -214,12 +186,6 @@ def test_single_epoch(
             """
             epoch_1000x = int((test_i / len(test_dl) + epoch) * 1000)
             log_writer.add_scalar("loss/test", loss_mean, epoch_1000x)
+            log_writer.add_scalar("mse/test", mse_mean, epoch_1000x)
             # Write overall correlation, individual channels, and bands.
             log_writer.add_scalar("correlation/test", correlation_mean, epoch_1000x)
-            write_correlation_metrics(
-                log_writer,
-                "test",
-                band_correlation_mean,
-                channel_correlation_mean,
-                epoch_1000x,
-            )

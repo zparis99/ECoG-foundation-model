@@ -19,26 +19,62 @@ def seed_everything(seed=0, cudnn_deterministic=True):
     torch.cuda.manual_seed_all(seed)
 
 
+def patchify(imgs, patch_size, frame_patch_size):
+    N, C, T, H, W = imgs.shape
+    ph, pw = patch_size
+    assert H % ph == 0 and W % pw == 0 and T % frame_patch_size == 0
+    h = H // ph
+    w = W // pw
+    t = T // frame_patch_size
+
+    x = imgs.reshape(shape=(N, C, t, frame_patch_size, h, ph, w, pw))
+    x = torch.einsum("nctuhpwq->nthwupqc", x)
+    x = x.reshape(shape=(N, t * h * w, frame_patch_size * ph * pw * C))
+    return x
+
+
+def unpatchify(x, patch_size, frame_patch_size, grid_size):
+    N, L, D = x.shape
+
+    ph, pw = patch_size
+    h, w = grid_size
+    t = L // h // w
+    C = D // frame_patch_size // ph // pw
+
+    x = x.reshape(shape=(N, t, h, w, frame_patch_size, ph, pw, C))
+
+    x = torch.einsum("nthwupqc->nctuhpwq", x)
+    T, H, W = t * frame_patch_size, h * ph, w * pw
+    imgs = x.reshape(shape=(N, C, T, H, W))
+    return imgs
+
+
 # TODO: Add tests
-def apply_mask_to_batch(model, batch, mask):
-    """Replaces values in batch with nan when mask is False.
+def apply_mask_to_batch(model, batch, mask, frame_patch_size):
+    """Replaces values in batch with nan where mask is True. Also returns mask in same shape as batch.
     model: MaskedAutencoderViT
     mask: (batch_size, frames // frame_patch_size)
     batch: (batch_size, num_channels, frames, electrode_height, electrode_width)
+    frame_patch_size: The number of
     """
-    batch_patch = model.patchify(batch)
+    patch_size = model.patch_embed.patch_size
+    grid_size = model.patch_embed.grid_size
+    batch_patch = patchify(batch, patch_size, frame_patch_size)
     # Mask is for every frame_patch_size frames, so expand to align with batch
     # tensor and fill in masked out information with nan.
-    B, t = mask.shape
-    _, T, P = batch_patch.shape
-    frame_patch_size = T // t
+    _, _, C = batch_patch.shape
+    B, T = mask.shape
     # Repeats mask values to align with batch dimensions.
-    mask = (
-        mask.repeat_interleave(frame_patch_size * P, axis=1)
-        .view(B, T, P)
-        .to(torch.bool)
+    mask = mask.repeat_interleave(C, axis=1).view(B, T, C).to(torch.bool)
+    masked_batch = unpatchify(
+        batch_patch.masked_fill(mask, torch.nan),
+        patch_size,
+        frame_patch_size,
+        grid_size,
     )
-    return model.unpatchify(batch_patch.masked_fill(mask, torch.nan))
+    mask = unpatchify(mask, patch_size, frame_patch_size, grid_size)
+
+    return masked_batch, mask
 
 
 # TODO: Test this function.
@@ -96,7 +132,10 @@ def preprocess_neural_data(
         # Add band axis of size 1 for non-filtered data.
         filtered_signal = np.expand_dims(signal, axis=0)
 
-    resampled = resample_mean_signals(filtered_signal, fs, new_fs)
+    if fs != new_fs:
+        resampled = resample_mean_signals(filtered_signal, fs, new_fs)
+    else:
+        resampled = filtered_signal
     # rearrange into shape c*t*d*h*w, where
     # c = freq bands
     # t = number of datapoints within a sample
@@ -110,7 +149,7 @@ def preprocess_neural_data(
     )
 
     # Zero-pad if sample is too short.
-    expected_sample_length = sample_secs * new_fs
+    expected_sample_length = int(sample_secs * new_fs / 1000)
     if preprocessed_signal.shape[1] < expected_sample_length:
         padding = (
             np.ones(

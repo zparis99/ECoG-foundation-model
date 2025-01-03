@@ -160,6 +160,11 @@ def arg_parser():
         type=int,
         help="Number of steps to print training progress after.",
     )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        help="Weight factor for loss computation. Alpha=1 is -correlation loss, alpha = 0 is mse loss.",
+    )
 
     args = parser.parse_args()
 

@@ -71,7 +71,9 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
     """
     model_config = config.video_mae_task_config.vit_config
 
-    num_frames = config.ecog_data_config.sample_length * config.ecog_data_config.new_fs
+    num_frames = int(
+        config.ecog_data_config.sample_length * config.ecog_data_config.new_fs / 1000
+    )
 
     frame_patch_size = model_config.frame_patch_size
     num_patches = int(  # Defining the number of patches
@@ -102,14 +104,15 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
         decoder_depth=model_config.decoder_depth,
         decoder_num_heads=model_config.decoder_num_heads,
         mlp_ratio=model_config.mlp_ratio,
-        norm_pix_loss=config.video_mae_task_config.norm_pix_loss,
+        alpha=config.video_mae_task_config.alpha,
         num_frames=num_frames,
         t_patch_size=model_config.frame_patch_size,
         no_qkv_bias=model_config.no_qkv_bias,
         sep_pos_embed=model_config.sep_pos_embed,
         trunc_init=model_config.trunc_init,
         cls_embed=model_config.use_cls_token,
-        pred_t_dim=num_frames // model_config.frame_patch_size,
+        # TODO: Make this configurable.
+        pred_t_dim=num_frames,
         img_mask=None,
         pct_masks_to_decode=config.video_mae_task_config.pct_masks_to_decode,
     )

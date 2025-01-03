@@ -15,9 +15,10 @@ GRID_HEIGHT = 8
 GRID_WIDTH = 8
 NUM_FRAMES = 40
 
+
 @pytest.fixture
 def fake_model():
-    class FakeModel():
+    class FakeModel:
         def __init__(self):
             self.patchify = Rearrange(
                 "b c (f pf) (d pd) (h ph) (w pw) -> b f d h w (pd ph pw pf c)",
@@ -27,7 +28,16 @@ def fake_model():
                 pf=FRAME_PATCH_SIZE,
             )
 
+            self.unpatchify = Rearrange(
+                "b f d h w (pd ph pw pf c) -> b c (f pf) (d pd) (h ph) (w pw)",
+                pd=1,
+                ph=1,
+                pw=1,
+                pf=FRAME_PATCH_SIZE,
+            )
+
     return FakeModel()
+
 
 def test_resampling_correctly_averages_windows():
     # Signal of shape [bands, electrodes, samples]
@@ -45,8 +55,8 @@ def test_resampling_correctly_averages_windows():
         resample_mean_signals(input_signal, old_fs, new_fs),
         np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]),
     )
-   
-    
+
+
 def test_resampling_can_handle_not_perfectly_divisible_durations():
     # Signal of shape [bands, electrodes, samples]
     input_signal = np.array(
@@ -63,7 +73,8 @@ def test_resampling_can_handle_not_perfectly_divisible_durations():
         resample_mean_signals(input_signal, old_fs, new_fs),
         np.array([[[1, 2, 10], [3, 4, 11]], [[5, 6, 12], [7, 8, 13]]]),
     )
-    
+
+
 def test_resampling_can_handle_non_divisible_sampling_rates():
     # Signal of shape [bands, electrodes, samples]
     input_signal = np.array(
@@ -82,4 +93,8 @@ def test_resampling_can_handle_non_divisible_sampling_rates():
         resample_mean_signals(input_signal, old_fs, new_fs),
         np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]),
     )
-    
+
+
+def test_apply_mask_to_batch(fake_model):
+    batch = torch.ones(2, 2, 8, 2, 2)
+    mask = torch.tensor([[], []])

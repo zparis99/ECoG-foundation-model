@@ -39,7 +39,7 @@ def test_model_forward_without_mask_succeeds(model):
     fake_batch = torch.randn(
         16, NUM_BANDS, FRAMES_PER_SAMPLE, constants.GRID_SIZE, constants.GRID_SIZE
     )
-    loss, pred, mask, latent, correlations = model_forward(
+    loss, mse, pred, mask, latent, correlations = model_forward(
         model, fake_batch, mask_ratio=0.8
     )
 
@@ -50,6 +50,7 @@ def test_model_forward_without_mask_succeeds(model):
         // FRAME_PATCH_SIZE
     )
     assert loss.detach().numpy().shape == ()
+    assert mse.detach().numpy().shape == ()
     assert not torch.isnan(loss)
     assert pred.detach().numpy().shape == (16, num_patches, NUM_BANDS)
     assert mask.detach().numpy().shape == (16, num_patches)
@@ -58,11 +59,7 @@ def test_model_forward_without_mask_succeeds(model):
         int(num_patches * (1 - 0.8)),
         EMBEDDING_DIM,
     )
-    assert correlations.detach().numpy().shape == (
-        NUM_BANDS,
-        constants.GRID_SIZE,
-        constants.GRID_SIZE,
-    )
+    assert correlations.detach().numpy().shape == ()
 
 
 def test_model_forward_with_mask_succeeds(model):
@@ -78,7 +75,7 @@ def test_model_forward_with_mask_succeeds(model):
     mask[0][1] = False
 
     model.initialize_mask(mask)
-    loss, pred, mask, latent, correlations = model_forward(
+    loss, mse, pred, mask, latent, correlations = model_forward(
         model, fake_batch, mask_ratio=0.8
     )
 
@@ -92,6 +89,7 @@ def test_model_forward_with_mask_succeeds(model):
         num_patches - 2 * FRAMES_PER_SAMPLE // FRAME_PATCH_SIZE
     )
     assert loss.detach().numpy().shape == ()
+    assert mse.detach().numpy().shape == ()
     assert not torch.isnan(loss)
     assert pred.detach().numpy().shape == (16, num_patches, NUM_BANDS)
     assert mask.detach().numpy().shape == (16, num_patches)
@@ -100,11 +98,7 @@ def test_model_forward_with_mask_succeeds(model):
         int(num_patches_excluding_padding * (1 - 0.8)),
         EMBEDDING_DIM,
     )
-    assert correlations.detach().numpy().shape == (
-        NUM_BANDS,
-        constants.GRID_SIZE,
-        constants.GRID_SIZE,
-    )
+    assert correlations.detach().numpy().shape == ()
 
 
 def test_model_with_data_loader_input_succeeds(model, data_loader_creation_fn):
@@ -124,7 +118,7 @@ def test_model_with_data_loader_input_succeeds(model, data_loader_creation_fn):
     )
 
     for data in data_loader:
-        loss, pred, mask, latent, correlations = model_forward(
+        loss, mse, pred, mask, latent, correlations = model_forward(
             model, data, mask_ratio=0.8
         )
 
@@ -135,6 +129,7 @@ def test_model_with_data_loader_input_succeeds(model, data_loader_creation_fn):
             // FRAME_PATCH_SIZE
         )
         assert loss.detach().numpy().shape == ()
+        assert mse.detach().numpy().shape == ()
         assert not torch.isnan(loss)
         assert pred.detach().numpy().shape == (16, num_patches, NUM_BANDS)
         assert mask.detach().numpy().shape == (16, num_patches)
@@ -143,8 +138,4 @@ def test_model_with_data_loader_input_succeeds(model, data_loader_creation_fn):
             int(num_patches * (1 - 0.8)),
             EMBEDDING_DIM,
         )
-        assert correlations.detach().numpy().shape == (
-            NUM_BANDS,
-            constants.GRID_SIZE,
-            constants.GRID_SIZE,
-        )
+        assert correlations.detach().numpy().shape == ()

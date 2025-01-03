@@ -92,8 +92,10 @@ class VideoMAETaskConfig:
     encoder_mask_ratio: float = 0.5
     # Percentage of masks tokens to pass into decoder for reconstruction.
     pct_masks_to_decode: float = 0
-    # If true then normalize the target before calculating loss.
-    norm_pix_loss: bool = False
+    # Weight factor for loss computation. Final loss is determined by
+    # loss = alpha * -(pearson correlation) + (1- alpha) * mean squared error. Alpha=1 is -correlation loss,
+    # alpha = 0 is mse loss.
+    alpha: float = 0.5
 
 
 @dataclass
@@ -224,10 +226,10 @@ def create_video_mae_experiment_config(args: Namespace | str):
                 if args.pct_masks_to_decode
                 else config.getfloat("VideoMAETaskConfig", "pct_masks_to_decode")
             ),
-            norm_pix_loss=(
-                args.norm_pix_loss
-                if args.norm_pix_loss
-                else config.getboolean("VideoMAETaskConfig", "norm_pix_loss")
+            alpha=(
+                args.alpha
+                if args.alpha
+                else config.getfloat("VideoMAETaskConfig", "alpha")
             ),
         ),
         trainer_config=TrainerConfig(

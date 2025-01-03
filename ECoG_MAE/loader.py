@@ -12,7 +12,7 @@ import logging
 import json
 
 from config import ECoGDataConfig, VideoMAEExperimentConfig
-from utils import preprocess_neural_data, get_signal_stats
+from utils import preprocess_neural_data
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.bands = config.bands
         self.fs = config.original_fs
         self.new_fs = config.new_fs
-        self.sample_secs = config.sample_length
+        self.sample_length = config.sample_length
 
         # Load or initialize cache
         if os.path.exists(self.CACHE_FILE):
@@ -69,8 +69,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         # this is to make sure we stop streaming from our dataset after the max number of samples is reached
         while self.index < self.max_samples:
             # Exclude examples where the sample goes past the end of the signal.
-            start_sample = self.index * self.sample_secs * self.fs
-            end_sample = (self.index + 1) * self.sample_secs * self.fs
+            start_sample = self.index * self.sample_length * self.fs
+            end_sample = (self.index + 1) * self.sample_length * self.fs
             if end_sample > self.signal.shape[1]:
                 self.index = self.max_samples
                 break
@@ -93,7 +93,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             current_sample,
             self.fs,
             self.new_fs,
-            self.sample_secs,
+            self.sample_length,
             bands=self.bands,
             env=self.config.env,
         )

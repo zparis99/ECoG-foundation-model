@@ -35,7 +35,7 @@ CONFIG_VALUES = {
     "VideoMAETaskConfig": {
         "encoder_mask_ratio": 0.75,
         "pct_masks_to_decode": 1.0,
-        "norm_pix_loss": False,
+        "alpha": 0.5,
     },
     "ECoGDataConfig": {
         "data_size": 1.0,
@@ -144,7 +144,7 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
         # VideoMAETaskConfig parameters
         "encoder_mask_ratio": 0.73,
         "pct_masks_to_decode": 0.02,
-        "norm_pix_loss": True,
+        "alpha": 0.75,
         # ECoGDataConfig parameters
         "data_size": 0.98,
         "batch_size": 63,
@@ -239,7 +239,7 @@ def test_write_config_file(mocker, tmp_path):
             ),
             encoder_mask_ratio=0.75,
             pct_masks_to_decode=0.25,
-            norm_pix_loss=True,
+            alpha=0.5,
         ),
         ecog_data_config=ECoGDataConfig(
             data_size=0.8,

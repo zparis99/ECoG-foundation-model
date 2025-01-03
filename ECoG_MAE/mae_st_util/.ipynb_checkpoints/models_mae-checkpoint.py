@@ -19,7 +19,6 @@ import copy
 from mae_st_util import video_vit
 from metrics import pearson_correlation
 
-
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
 
@@ -36,6 +35,7 @@ class MaskedAutoencoderViT(nn.Module):
         decoder_num_heads=16,
         mlp_ratio=4.0,
         norm_layer=nn.LayerNorm,
+        norm_pix_loss=False,
         num_frames=16,
         t_patch_size=2,
         patch_embed=video_vit.PatchEmbed,
@@ -46,57 +46,8 @@ class MaskedAutoencoderViT(nn.Module):
         pred_t_dim=8,
         img_mask=None,
         pct_masks_to_decode=1,
-        alpha=0.5,
         **kwargs,
     ):
-        """Initialize a Masked Autoencoder with Vision Transformer backbone for video processing.
-
-        This class implements a masked autoencoder that operates on video data using a Vision
-        Transformer architecture. It supports both spatial and temporal masking/encoding of video frames.
-
-        Args:
-            img_size (int, optional): Size of input image (assuming square). Defaults to 224.
-            patch_size (int, optional): Size of patches in pixels to be extracted from image. Defaults to 16.
-            in_chans (int, optional): Number of input channels. Defaults to 3.
-            embed_dim (int, optional): Dimension of encoder embedding. Defaults to 1024.
-            depth (int, optional): Number of transformer blocks in encoder. Defaults to 24.
-            num_heads (int, optional): Number of attention heads in encoder. Defaults to 16.
-            decoder_embed_dim (int, optional): Dimension of decoder embedding. Defaults to 512.
-            decoder_depth (int, optional): Number of transformer blocks in decoder. Defaults to 8.
-            decoder_num_heads (int, optional): Number of attention heads in decoder. Defaults to 16.
-            mlp_ratio (float, optional): Ratio of MLP hidden dim to embedding dim. Defaults to 4.0.
-            norm_layer (nn.Module, optional): Normalization layer. Defaults to nn.LayerNorm.
-            num_frames (int, optional): Number of frames in input video. Defaults to 16.
-            t_patch_size (int, optional): Size of temporal patches. Defaults to 2.
-            patch_embed (nn.Module, optional): Module for patch embedding. Defaults to video_vit.PatchEmbed.
-            no_qkv_bias (bool, optional): If True, disable bias in attention. Defaults to False.
-            sep_pos_embed (bool, optional): If True, use separate spatial and temporal position embeddings. Defaults to True.
-            trunc_init (bool, optional): If True, use truncated normal initialization. Defaults to False.
-            cls_embed (bool, optional): If True, use classification token. Defaults to True.
-            pred_t_dim (int, optional): Number of time predictions to make (i.e. if t_patch_size is 4 and num_frames
-                is 20 a pred_t_dim=5 will predict 5 total frames one for each patch, if pred_t_dim is 10 it will predict
-                10 frames). Essentially it is a way to increase efficiency of training if neighboring frames are highly
-                correlated which is not always true with neural data. Defaults to 8.
-            img_mask (torch.Tensor, optional): Mask indicating which pixels are present/absent. True means present, false means
-                absent. Can also be instantiated using initialize_mask(). Defaults to None.
-            pct_masks_to_decode (float, optional): Percentage of masked patches to decode. Defaults to 1.
-            alpha (float, optional): Weight factor for loss computation. Final loss is determined by
-                loss = alpha * -(pearson correlation) + (1- alpha) * mean squared error. Alpha=1 is -correlation loss,
-                alpha = 0 is mse loss. Defaults to 0.5.
-            **kwargs: Additional arguments passed to parent class.
-
-        The model architecture consists of:
-            1. A patch embedding layer that processes both spatial and temporal dimensions
-            2. An encoder with transformer blocks
-            3. A decoder that reconstructs masked patches
-            4. Optional separate position embeddings for spatial and temporal dimensions
-            5. Support for masked regions in input images/videos
-
-        Note:
-            - The model assumes square input images (img_size x img_size)
-            - Position embeddings can be either separate for spatial/temporal dimensions or combined
-            - The decoder reconstructs only a portion of masked patches when pct_masks_to_decode < 1
-        """
         super().__init__()
         self.trunc_init = trunc_init
         self.sep_pos_embed = sep_pos_embed
@@ -106,9 +57,6 @@ class MaskedAutoencoderViT(nn.Module):
         self.embed_dim = embed_dim
         self.pct_masks_to_decode = pct_masks_to_decode
         self.patch_size = patch_size
-        self.alpha = alpha
-
-        self.masked_input_norm = video_vit.MaskedBatchNorm(in_chans)
 
         self.patch_embed = patch_embed(
             img_size,
@@ -206,6 +154,8 @@ class MaskedAutoencoderViT(nn.Module):
             bias=True,
         )
 
+        self.norm_pix_loss = norm_pix_loss
+
         self.initialize_mask(img_mask)
         self.initialize_weights()
 
@@ -252,39 +202,29 @@ class MaskedAutoencoderViT(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def initialize_mask(self, img_mask):
-        """Provide a mask of which pixels in the image are not present. True means value is masked out, False means it is present.
-
-        img_mask: bool tensor of shape [H, W]
-        """
         if img_mask is not None:
             img_mask = torch.as_tensor(img_mask > 0).float()
 
             H, W = img_mask.shape
             img_mask_patches = self.patchify(
-                img_mask.view(1, 1, 1, H, W).repeat(
-                    1, self.patch_embed.in_chans, self.pred_t_dim, 1, 1
-                )
+                img_mask
+                .view(1, 1, 1, H, W)
+                .repeat(1, self.patch_embed.in_chans, self.pred_t_dim, 1, 1)
             )
 
-            patch_mask = (
-                rearrange(
-                    img_mask,
-                    "(h ph) (w pw) -> (h w) (ph pw)",
-                    ph=self.patch_embed.patch_size[0],
-                    pw=self.patch_embed.patch_size[1],
-                )
-                .any(dim=1)
-                .float()
-            )
-            (patch_mask_indices,) = patch_mask.nonzero(as_tuple=True)
+            patch_mask = rearrange(
+                img_mask,
+                "(h ph) (w pw) -> (h w) (ph pw)",
+                ph=self.patch_embed.patch_size[0],
+                pw=self.patch_embed.patch_size[1],
+            ).any(dim=1).float()
+            patch_mask_indices, = patch_mask.nonzero(as_tuple=True)
 
             self.register_buffer("img_mask", img_mask)
             self.register_buffer("img_mask_patches", img_mask_patches)
             self.register_buffer("patch_mask", patch_mask)
             self.register_buffer("patch_mask_indices", patch_mask_indices)
-            self.n_mask_patches = int(
-                len(patch_mask_indices) * self.pct_masks_to_decode
-            )
+            self.n_mask_patches = int(len(patch_mask_indices) * self.pct_masks_to_decode)
         else:
             self.register_buffer("img_mask", None)
             self.register_buffer("img_mask_patches", None)
@@ -358,22 +298,10 @@ class MaskedAutoencoderViT(nn.Module):
         # keep the first subset
         ids_keep = ids_shuffle[:, :len_keep]
         if not use_contrastive_loss:
-            x_masked = torch.gather(
-                x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D)
-            )
+            x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
         else:
-            x_masked1 = torch.gather(
-                x,
-                dim=1,
-                index=ids_keep[:, : len_keep // 2].unsqueeze(-1).repeat(1, 1, D),
-            )
-            x_masked2 = torch.gather(
-                x,
-                dim=1,
-                index=ids_keep[:, len_keep // 2 : len_keep]
-                .unsqueeze(-1)
-                .repeat(1, 1, D),
-            )
+            x_masked1 = torch.gather(x, dim=1, index=ids_keep[:,:len_keep//2].unsqueeze(-1).repeat(1, 1, D))
+            x_masked2 = torch.gather(x, dim=1, index=ids_keep[:,len_keep//2:len_keep].unsqueeze(-1).repeat(1, 1, D))
 
         if not use_contrastive_loss:
             # generate the binary mask: 0 is keep, 1 is remove
@@ -385,8 +313,8 @@ class MaskedAutoencoderViT(nn.Module):
             # generate the binary mask: 0 is keep, 1 is remove
             mask1 = torch.ones([N, L], device=x.device)
             mask2 = torch.ones([N, L], device=x.device)
-            mask1[:, : len_keep // 2] = 0
-            mask2[:, len_keep // 2 : len_keep] = 0
+            mask1[:, :len_keep//2] = 0
+            mask2[:, len_keep//2:len_keep] = 0
             # unshuffle to get the binary mask
             mask1 = torch.gather(mask1, dim=1, index=ids_restore)
             mask2 = torch.gather(mask2, dim=1, index=ids_restore)
@@ -394,26 +322,24 @@ class MaskedAutoencoderViT(nn.Module):
         if not use_contrastive_loss:
             return x_masked, mask, ids_restore, ids_keep
         else:
-            return [x_masked1, x_masked2], [mask1, mask2], ids_restore, ids_keep
-
+            return [x_masked1,x_masked2], [mask1,mask2], ids_restore, ids_keep
+        
     def forward_encoder(self, x, mask_ratio, use_contrastive_loss=False):
         x = self.patch_embed(x)
-
+        
         N, T, L, C = x.shape
 
         x = x.reshape(N, T * L, C)
-
+        
         # masking: length -> length * mask_ratio
         if not use_contrastive_loss:
             x, mask, ids_restore, ids_keep = self.random_masking(x, mask_ratio)
             x = x.view(N, -1, C)
         else:
-            [x1, x2], [mask1, mask2], ids_restore, ids_keep = self.random_masking(
-                x, mask_ratio, use_contrastive_loss=use_contrastive_loss
-            )
+            [x1,x2], [mask1,mask2], ids_restore, ids_keep = self.random_masking(x, mask_ratio, use_contrastive_loss=use_contrastive_loss)
             x1 = x1.view(len(x1), -1, C)
             x2 = x2.view(len(x2), -1, C)
-
+        
         # append cls token
         if self.cls_embed:
             cls_token = self.cls_token
@@ -469,11 +395,9 @@ class MaskedAutoencoderViT(nn.Module):
         if not use_contrastive_loss:
             x = x.view([N, -1, C]) + pos_embed
         else:
-            x1 = x1.view([len(x1), -1, C]) + pos_embed[:, : x1.shape[1]]
-            x2 = x2.view([len(x2), -1, C]) + torch.cat(
-                (pos_embed[:, :1], pos_embed[:, x1.shape[1] :]), dim=1
-            )
-
+            x1 = x1.view([len(x1), -1, C]) + pos_embed[:,:x1.shape[1]]
+            x2 = x2.view([len(x2), -1, C]) + torch.cat((pos_embed[:,:1], pos_embed[:,x1.shape[1]:]),dim=1)
+        
         if not use_contrastive_loss:
             # apply Transformer blocks
             for blk in self.blocks:
@@ -499,7 +423,7 @@ class MaskedAutoencoderViT(nn.Module):
                 x1 = x1[:, 1:, :]
                 x2 = x2[:, 1:, :]
 
-            return [x1, x2], [mask1, mask2], ids_restore
+            return [x1,x2], [mask1,mask2], ids_restore
 
     def forward_encoder_with_mask(self, x, ids_keep):
         # embed patches
@@ -509,13 +433,13 @@ class MaskedAutoencoderViT(nn.Module):
         x = x.reshape(N, T * L, C)
         # mask out tokens
         x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, C))
-
+        
         # append cls token
         if self.cls_embed:
             cls_token = self.cls_token
             cls_tokens = cls_token.expand(x.shape[0], -1, -1)
             x = torch.cat((cls_tokens, x), dim=1)
-
+        
         # add pos embed w/o cls token
         if self.sep_pos_embed:
             pos_embed = self.pos_embed_spatial.repeat(
@@ -574,7 +498,7 @@ class MaskedAutoencoderViT(nn.Module):
         # embed tokens
         x = self.decoder_embed(x)
         C = x.shape[-1]
-
+        
         # append mask tokens to sequence
         mask_tokens = self.mask_token.repeat(N, T * H * W + 0 - x.shape[1], 1)
         x_ = torch.cat([x[:, :, :], mask_tokens], dim=1)  # no cls token
@@ -621,14 +545,14 @@ class MaskedAutoencoderViT(nn.Module):
                 decoder_cls_tokens, x = x[:, :1, :], x[:, 1:, :]
             x = x.view([N, T, H * W, C])
             # x = x[:, :, self.patch_mask_indices]
-
+            
             # drop patches randomly to preserve memory (VideoMAE2 approach)
             included_patches = self.patch_mask_indices
             num_to_select = int(self.pct_masks_to_decode * len(included_patches))
             selected_idx = torch.randperm(len(included_patches))[:num_to_select]
             included_patches = included_patches[selected_idx]
             x = x[:, :, included_patches]
-
+            
             x = x.view([N, T * self.n_mask_patches, C])
             if self.cls_embed:
                 x = torch.cat((decoder_cls_tokens, x), dim=1)
@@ -651,9 +575,7 @@ class MaskedAutoencoderViT(nn.Module):
             x = x.view([N, T, self.n_mask_patches, C])
             x_ = torch.zeros([N, T, H * W, C], dtype=x.dtype, device=x.device)
             x = x_.scatter(
-                2,
-                included_patches.view(1, 1, -1, 1).expand(N, T, self.n_mask_patches, C),
-                x,
+                2, included_patches.view(1, 1, -1, 1).expand(N, T, self.n_mask_patches, C), x,
             )
             x = x.view([N, T * H * W, C])
 
@@ -677,31 +599,25 @@ class MaskedAutoencoderViT(nn.Module):
             .to(imgs.device),
         )
         target = self.patchify(_imgs)
+        if self.norm_pix_loss:
+            mean = target.mean(dim=-1, keepdim=True)
+            var = target.var(dim=-1, keepdim=True)
+            target = (target - mean) / (var + 1.0e-6) ** 0.5
 
-        # Calculate correlation of masked patches
-        B, L, C = target.shape
-        expanded_mask = mask.repeat_interleave(C, axis=1).view(B, L, C).bool()
-        masked_imgs = target.masked_fill(expanded_mask, torch.nan)
-        masked_pred = pred.masked_fill(expanded_mask, torch.nan)
-        correlation = pearson_correlation(
-            masked_imgs[~masked_imgs.isnan()], masked_pred[~masked_pred.isnan()]
-        )
-
-        # Calculate mse
-        mse = (pred - target) ** 2
+        _img_pred = self.unpatchify(pred)
+        
+        correlation = pearson_correlation(_imgs, _img_pred)
+        
+        loss = (pred - target) ** 2
         if self.img_mask is not None:
             # exclude missing pixels from loss
             mask = mask.unsqueeze(-1) * self.img_mask_patches
         else:
-            mse = mse.mean(dim=-1)  # [N, L], mean loss per patch
+            loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
 
-        mse = (mse * mask).sum() / mask.sum()  # mean loss on removed patches
-
-        # Loss is weighted sum of mse and correlation
-        loss = self.alpha * (-correlation) + (1 - self.alpha) * mse
-
-        return loss, mse, correlation
-
+        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+        return loss, correlation
+    
     def forward_cyclic_loss(self, pred1, pred2, mask):
         """
         mask1 and mask2 encoder outputs should be the same since they are predicting the same held-out true mask
@@ -716,33 +632,20 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
-    def forward_input_norm(self, x):
-        return self.masked_input_norm(x, self.img_mask)
-
-    def forward(
-        self,
-        imgs,
-        mask_ratio=0.75,
-        use_contrastive_loss=False,
-        forward_features=False,
-        global_pool=True,
-        cls_forward=False,
-    ):
-        imgs = self.masked_input_norm(imgs, self.img_mask)
-        # TODO: Break this out and test.
+    def forward(self, imgs, mask_ratio=0.75, use_contrastive_loss=False, forward_features=False, global_pool=True, cls_forward=False):
         if forward_features:
             # embed patches
             x = self.patch_embed(imgs)
             N, T, L, C = x.shape  # T: temporal; L: spatial
-
-            x = x.reshape([N, T * L, C])
-
+    
+            x = x.view([N, T * L, C])
+    
             # append cls token
             if self.cls_embed:
                 cls_token = self.cls_token
                 cls_tokens = cls_token.expand(x.shape[0], -1, -1)
                 x = torch.cat((cls_tokens, x), dim=1)
-
+    
             if self.sep_pos_embed:
                 pos_embed = self.pos_embed_spatial.repeat(
                     1, self.input_size[0], 1
@@ -762,21 +665,21 @@ class MaskedAutoencoderViT(nn.Module):
             else:
                 pos_embed = self.pos_embed[:, :, :]
             x = x + pos_embed
-
+    
             # drop patches outside image mask
             if self.img_mask is not None:
                 if self.cls_embed:
                     cls_tokens, x = x[:, :1, :], x[:, 1:, :]
                 x = x.view([N, T, L, C])
                 x = x[:, :, self.patch_mask_indices]
-                x = x.reshape([N, T * self.n_mask_patches, C])
+                x = x.view([N, T * self.n_mask_patches, C])
                 if self.cls_embed:
                     x = torch.cat((cls_tokens, x), dim=1)
-
+    
             # apply Transformer blocks
             for blk in self.blocks:
                 x = blk(x)
-
+    
             if global_pool:
                 if self.cls_embed:
                     # remove cls token
@@ -786,15 +689,22 @@ class MaskedAutoencoderViT(nn.Module):
                 x = x[:, :1, :]
             return x
         else:
-            latent, mask, ids_restore = self.forward_encoder(
-                imgs, mask_ratio, use_contrastive_loss=use_contrastive_loss
-            )
+            latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio, use_contrastive_loss=use_contrastive_loss)
             if not use_contrastive_loss:
-                pred = self.forward_decoder(
-                    latent, ids_restore, use_contrastive_loss=use_contrastive_loss
-                )  # [N, L, p*p*C]
-                loss, mse, correlation = self.forward_loss(imgs, pred, mask)
-                return loss, mse, pred, mask, latent, correlation
+                pred = self.forward_decoder(latent, ids_restore, use_contrastive_loss=use_contrastive_loss)  # [N, L, p*p*C]
+                loss, correlation = self.forward_loss(imgs, pred, mask)
+                return loss, pred, mask, latent, correlation
+            else:
+                latent1, latent2 = latent
+                mask1, mask2 = mask
+                true_mask = copy.deepcopy(mask1)
+                true_mask[mask2==0]=0 # dont try to predict the masks that were fed to the other encoder
+                pred1 = self.forward_decoder(latent1, ids_restore, use_contrastive_loss=use_contrastive_loss)  # [N, L, p*p*C]
+                pred2 = self.forward_decoder(latent2, ids_restore, use_contrastive_loss=use_contrastive_loss)  # [N, L, p*p*C]
+                loss1 = self.forward_loss(imgs, pred1, true_mask)
+                loss2 = self.forward_loss(imgs, pred2, true_mask)
+                loss3 = self.forward_cyclic_loss(pred1, pred2, true_mask)
+                return loss1, loss2, loss3, pred1, pred2, mask1, mask2, true_mask, latent1, latent2
 
     def forward_head(self, x):
         # classifier
@@ -804,7 +714,7 @@ class MaskedAutoencoderViT(nn.Module):
         x = self.head(x)
 
         return x
-
+    
     def mask_fill(self, x):
         N, L, C = x.shape
         T = self.patch_embed.t_grid_size
@@ -814,8 +724,6 @@ class MaskedAutoencoderViT(nn.Module):
         x = x.view(N, T, -1, C)
         x_ = torch.zeros([N, T, H * W, C], dtype=x.dtype, device=x.device)
         x = x_.scatter(
-            2,
-            self.patch_mask_indices.view(1, 1, -1, 1).expand(N, T, -1, C),
-            x,
+            2, self.patch_mask_indices.view(1, 1, -1, 1).expand(N, T, -1, C), x,
         )
         return x
