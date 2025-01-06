@@ -106,7 +106,7 @@ def plot_multi_band_reconstruction(
     # We generate pred_t_dim predictions per patch so setup times of predictions here.
     reconstruction_prediction_times = np.linspace(
         0, original_signal.shape[2] - 1, pred_t_dim
-    ).astype(np.long)
+    ).astype(np.int64)
 
     # Create subplots for each band
     for band_idx in range(num_bands):
