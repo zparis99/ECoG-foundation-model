@@ -24,7 +24,7 @@ def run_encoding_task(
     model,
 ):
     """Run encoding task between word embeddings and neural embeddings.
-    
+
     As of right now these encoding and decoding can use practically the same code. If they start to diverge too much though we
     can split them up more.
 
@@ -68,7 +68,7 @@ def run_decoding_task(
     model,
 ):
     """Run decoding task between neural embeddings and word embeddings.
-    
+
     As of right now these encoding and decoding can use practically the same code. If they start to diverge too much though we
     can split them up more.
 
@@ -93,7 +93,7 @@ def run_decoding_task(
         experiment_config.encoding_task_config.embedding_batch_size,
         experiment_config.encoding_task_config.embedding_device,
     )
-    
+
     # Only change as of now is the order of regression.
     predictions = run_regression(
         neural_embeddings,
@@ -126,12 +126,20 @@ def get_correlation_metrics(groundtruth, predicted):
     overall_corr, overall_p = stats.pearsonr(gt_flat, pred_flat)
 
     # Calculate per-dimension correlations
-    dim_corrs = np.array([stats.pearsonr(groundtruth[:, i], predicted[:, i])[0] 
-                          for i in range(groundtruth.shape[1])])
+    dim_corrs = np.array(
+        [
+            stats.pearsonr(groundtruth[:, i], predicted[:, i])[0]
+            for i in range(groundtruth.shape[1])
+        ]
+    )
 
     # Calculate per-embedding correlations
-    emb_corrs = np.array([stats.pearsonr(groundtruth[i, :], predicted[i, :])[0] 
-                          for i in range(groundtruth.shape[0])])
+    emb_corrs = np.array(
+        [
+            stats.pearsonr(groundtruth[i, :], predicted[i, :])[0]
+            for i in range(groundtruth.shape[0])
+        ]
+    )
 
     return {
         "overall_correlation": overall_corr,
@@ -141,7 +149,7 @@ def get_correlation_metrics(groundtruth, predicted):
         "mean_dimension_correlation": np.mean(dim_corrs),
         "mean_embedding_correlation": np.mean(emb_corrs),
         "median_dimension_correlation": np.median(dim_corrs),
-        "median_embedding_correlation": np.median(emb_corrs)
+        "median_embedding_correlation": np.median(emb_corrs),
     }
 
 
@@ -183,8 +191,12 @@ def run_regression(X: np.array, Y: np.array, num_folds: int) -> np.array:
 
 
 # TODO: Add tests for this.
+@torch.no_grad()
 def generate_embedding_dataset(
-    dataset: EncodingDecodingDataset, model: nn.Module, embedding_batch_size: int, device: str
+    dataset: EncodingDecodingDataset,
+    model: nn.Module,
+    embedding_batch_size: int,
+    device: str,
 ) -> tuple[np.array, np.array]:
     """Gathers word embeddings and generates neural embeddings using model from the dataset.
 
@@ -200,18 +212,22 @@ def generate_embedding_dataset(
     Returns:
         tuple[np.array, np.array]: (word_embeddings, neural_embeddings) both parallel arrays containing the embeddings for our examples.
     """
+    model.eval()
+
+    print("padding mask:", dataset.padding_mask)
+    model.initialize_mask(dataset.padding_mask.to(device))
 
     # Setup dataloader and iterate through examples.
     word_embeddings = []
     neural_embeddings = []
-    
+
     def _generate_neural_embeddings(neural_batch: list):
         neural_data = torch.cat(neural_batch)
         neural_data = neural_data.to(device)
 
         # Model output is shape:
         # [batch_size, num_patches, output_dim]
-        model_outputs = model(neural_data)
+        model_outputs = model(neural_data, forward_features=True)
 
         # Average pooling, can consider other options in the future.
         pooled_embeddings = torch.mean(model_outputs, dim=1)
@@ -221,7 +237,7 @@ def generate_embedding_dataset(
 
     # Collect data into batches to accelerate inference.
     neural_batch = []
-        
+
     for word_embedding, neural_data in dataset:
         word_embeddings.append(word_embedding)
         batch_ready_neural_data = np.expand_dims(neural_data, 0)
@@ -230,7 +246,7 @@ def generate_embedding_dataset(
         if len(neural_batch) == embedding_batch_size:
             _generate_neural_embeddings(neural_batch)
             neural_batch = []
-            
+
     # Catch any remaining examples.
     if len(neural_batch) > 0:
         _generate_neural_embeddings(neural_batch)
@@ -238,6 +254,8 @@ def generate_embedding_dataset(
 
     word_embeddings = np.array(word_embeddings)
     neural_embeddings = np.array(neural_embeddings)
+
+    model.train()
 
     return word_embeddings, neural_embeddings
 
