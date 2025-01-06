@@ -46,7 +46,6 @@ class MaskedAutoencoderViT(nn.Module):
         pred_t_dim=8,
         img_mask=None,
         pct_masks_to_decode=1,
-        alpha=0.5,
         **kwargs,
     ):
         """Initialize a Masked Autoencoder with Vision Transformer backbone for video processing.
@@ -106,7 +105,6 @@ class MaskedAutoencoderViT(nn.Module):
         self.embed_dim = embed_dim
         self.pct_masks_to_decode = pct_masks_to_decode
         self.patch_size = patch_size
-        self.alpha = alpha
 
         self.masked_input_norm = video_vit.MaskedBatchNorm(in_chans)
 
@@ -659,11 +657,12 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x
 
-    def forward_loss(self, imgs, pred, mask):
+    def forward_loss(self, imgs, pred, mask, alpha):
         """
         imgs: [N, C, T, H, W]
         pred: [N, t*h*w, u*p*p*C]
         mask: [N, t*h*w], 0 is keep, 1 is remove,
+        alpha: Loss weighting between correlation and MSE given by alpha * -correlation + (1 - alpha) * mse
         """
         _imgs = torch.index_select(
             imgs,
@@ -698,7 +697,7 @@ class MaskedAutoencoderViT(nn.Module):
         mse = (mse * mask).sum() / mask.sum()  # mean loss on removed patches
 
         # Loss is weighted sum of mse and correlation
-        loss = self.alpha * (-correlation) + (1 - self.alpha) * mse
+        loss = alpha * (-correlation) + (1 - alpha) * mse
 
         return loss, mse, correlation
 
@@ -727,6 +726,7 @@ class MaskedAutoencoderViT(nn.Module):
         forward_features=False,
         global_pool=True,
         cls_forward=False,
+        alpha=0.5,
     ):
         imgs = self.masked_input_norm(imgs, self.img_mask)
         # TODO: Break this out and test.
@@ -793,7 +793,7 @@ class MaskedAutoencoderViT(nn.Module):
                 pred = self.forward_decoder(
                     latent, ids_restore, use_contrastive_loss=use_contrastive_loss
                 )  # [N, L, p*p*C]
-                loss, mse, correlation = self.forward_loss(imgs, pred, mask)
+                loss, mse, correlation = self.forward_loss(imgs, pred, mask, alpha)
                 return loss, mse, pred, mask, latent, correlation
 
     def forward_head(self, x):

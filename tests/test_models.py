@@ -40,7 +40,7 @@ def test_model_forward_without_mask_succeeds(model):
         16, NUM_BANDS, FRAMES_PER_SAMPLE, constants.GRID_SIZE, constants.GRID_SIZE
     )
     loss, mse, pred, mask, latent, correlations = model_forward(
-        model, fake_batch, mask_ratio=0.8
+        model, fake_batch, mask_ratio=0.8, alpha=0.5
     )
 
     num_patches = (
@@ -61,6 +61,9 @@ def test_model_forward_without_mask_succeeds(model):
     )
     assert correlations.detach().numpy().shape == ()
 
+    # Check that loss is set as expected
+    assert torch.isclose(-correlations * 0.5 + mse * 0.5, loss)
+
 
 def test_model_forward_with_mask_succeeds(model):
     fake_batch = torch.randn(
@@ -76,7 +79,7 @@ def test_model_forward_with_mask_succeeds(model):
 
     model.initialize_mask(mask)
     loss, mse, pred, mask, latent, correlations = model_forward(
-        model, fake_batch, mask_ratio=0.8
+        model, fake_batch, mask_ratio=0.8, alpha=0.75
     )
 
     num_patches = (
@@ -100,6 +103,9 @@ def test_model_forward_with_mask_succeeds(model):
     )
     assert correlations.detach().numpy().shape == ()
 
+    # Check that loss is set as expected
+    assert torch.isclose(-correlations * 0.75 + mse * 0.25, loss)
+
 
 def test_model_with_data_loader_input_succeeds(model, data_loader_creation_fn):
     data_config = ECoGDataConfig(
@@ -119,7 +125,7 @@ def test_model_with_data_loader_input_succeeds(model, data_loader_creation_fn):
 
     for data in data_loader:
         loss, mse, pred, mask, latent, correlations = model_forward(
-            model, data, mask_ratio=0.8
+            model, data, mask_ratio=0.8, alpha=0.25
         )
 
         num_patches = (
@@ -139,3 +145,6 @@ def test_model_with_data_loader_input_succeeds(model, data_loader_creation_fn):
             EMBEDDING_DIM,
         )
         assert correlations.detach().numpy().shape == ()
+
+        # Check that loss is set as expected
+        assert torch.isclose(-correlations * 0.25 + mse * 0.75, loss)

@@ -13,10 +13,10 @@ import mae_st_util.misc as misc
 from mae_st_util.logging import master_print as print
 
 
-def model_forward(model, signal, mask_ratio):
+def model_forward(model, signal, mask_ratio, alpha):
     """Pass signal through model after converting nan's to 0."""
     signal = torch.nan_to_num(signal)
-    return model(signal, mask_ratio=mask_ratio)
+    return model(signal, mask_ratio=mask_ratio, alpha=alpha)
 
 
 def train_single_epoch(
@@ -67,7 +67,10 @@ def train_single_epoch(
 
         # TODO: Add more metrics using the other outputs.
         loss, mse, _, _, _, correlation = model_forward(
-            model, signal, config.video_mae_task_config.encoder_mask_ratio
+            model,
+            signal,
+            config.video_mae_task_config.encoder_mask_ratio,
+            config.video_mae_task_config.alpha,
         )
         if torch.isnan(mse):
             logger.error(
@@ -132,7 +135,10 @@ def test_single_epoch(
 
             # TODO: Add more metrics using the other outputs.
             loss, mse, pred, _, _, correlation = model_forward(
-                model, signal, config.video_mae_task_config.encoder_mask_ratio
+                model,
+                signal,
+                config.video_mae_task_config.encoder_mask_ratio,
+                config.video_mae_task_config.alpha,
             )
             if torch.isnan(mse):
                 logger.error(
