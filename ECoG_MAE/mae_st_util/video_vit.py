@@ -135,7 +135,7 @@ class Block(nn.Module):
         qkv_bias=False,
         qk_scale=None,
         drop=0.0,
-        attn_drop=0.0,
+        # attn_drop=0.0,
         drop_path=0.0,
         act_layer=nn.GELU,
         norm_layer=nn.LayerNorm,
@@ -148,7 +148,7 @@ class Block(nn.Module):
             num_heads=num_heads,
             qkv_bias=qkv_bias,
             qk_scale=qk_scale,
-            attn_drop=attn_drop,
+            attn_drop=0.0,
             proj_drop=drop,
         )
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here

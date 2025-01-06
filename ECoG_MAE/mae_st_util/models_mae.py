@@ -46,6 +46,8 @@ class MaskedAutoencoderViT(nn.Module):
         pred_t_dim=8,
         img_mask=None,
         pct_masks_to_decode=1,
+        proj_drop=0.0,
+        drop_path=0.0,
         **kwargs,
     ):
         """Initialize a Masked Autoencoder with Vision Transformer backbone for video processing.
@@ -79,9 +81,8 @@ class MaskedAutoencoderViT(nn.Module):
             img_mask (torch.Tensor, optional): Mask indicating which pixels are present/absent. True means present, false means
                 absent. Can also be instantiated using initialize_mask(). Defaults to None.
             pct_masks_to_decode (float, optional): Percentage of masked patches to decode. Defaults to 1.
-            alpha (float, optional): Weight factor for loss computation. Final loss is determined by
-                loss = alpha * -(pearson correlation) + (1- alpha) * mean squared error. Alpha=1 is -correlation loss,
-                alpha = 0 is mse loss. Defaults to 0.5.
+            proj_drop (float, optional): Probability of drop out in projection layer of attention blocks.
+            drop_path (float, optional): Probability of drop path in attention blocks.
             **kwargs: Additional arguments passed to parent class.
 
         The model architecture consists of:
@@ -152,6 +153,8 @@ class MaskedAutoencoderViT(nn.Module):
                     qkv_bias=not no_qkv_bias,
                     qk_scale=None,
                     norm_layer=norm_layer,
+                    drop=proj_drop,
+                    drop_path=drop_path,
                 )
                 for i in range(depth)
             ]
