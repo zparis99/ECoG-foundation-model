@@ -9,8 +9,6 @@ from argparse import Namespace
 # documenting the fields which can be configured.
 @dataclass
 class ECoGDataConfig:
-    # If 'batch' then will normalize data within a batch.
-    norm: str = None
     # Percentage of data to include in training/testing.
     data_size: float = 1.0
     # Batch size to train with.
@@ -94,8 +92,10 @@ class VideoMAETaskConfig:
     encoder_mask_ratio: float = 0.5
     # Percentage of masks tokens to pass into decoder for reconstruction.
     pct_masks_to_decode: float = 0
-    # If true then normalize the target before calculating loss.
-    norm_pix_loss: bool = False
+    # Weight factor for loss computation. Final loss is determined by
+    # loss = alpha * -(pearson correlation) + (1- alpha) * mean squared error. Alpha=1 is -correlation loss,
+    # alpha = 0 is mse loss.
+    alpha: float = 0.5
 
 
 @dataclass
@@ -226,10 +226,10 @@ def create_video_mae_experiment_config(args: Namespace | str):
                 if args.pct_masks_to_decode
                 else config.getfloat("VideoMAETaskConfig", "pct_masks_to_decode")
             ),
-            norm_pix_loss=(
-                args.norm_pix_loss
-                if args.norm_pix_loss
-                else config.getboolean("VideoMAETaskConfig", "norm_pix_loss")
+            alpha=(
+                args.alpha
+                if args.alpha
+                else config.getfloat("VideoMAETaskConfig", "alpha")
             ),
         ),
         trainer_config=TrainerConfig(
@@ -245,7 +245,6 @@ def create_video_mae_experiment_config(args: Namespace | str):
             ),
         ),
         ecog_data_config=ECoGDataConfig(
-            norm=args.norm if args.norm else config.get("ECoGDataConfig", "norm"),
             batch_size=(
                 args.batch_size
                 if args.batch_size

@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
 from config import VideoMAEExperimentConfig, write_config_file
-from pretrain_utils import train_single_epoch, test_single_epoch
+from pretrain_engine import train_single_epoch, test_single_epoch
 
 
 logger = logging.getLogger(__name__)
@@ -44,21 +44,20 @@ def train_model(
     Returns:
         model: model instance with updated parameters after training
     """
-    
 
     torch.cuda.empty_cache()
     model.to(device)
-
-    num_frames = config.ecog_data_config.sample_length * config.ecog_data_config.new_fs
 
     # if config.trainer_config.learning_rate == None:
     #     model, optimizer, train_dl, lr_scheduler = accelerator.prepare(
     #         model, optimizer, train_dl, lr_scheduler
     #     )
-        
+
     os.makedirs(config.logging_config.event_log_dir, exist_ok=True)
     # TODO: Make this less likely to cause accidental overwrites.
-    log_writer = SummaryWriter(log_dir=os.path.join(config.logging_config.event_log_dir, config.job_name))
+    log_writer = SummaryWriter(
+        log_dir=os.path.join(config.logging_config.event_log_dir, config.job_name)
+    )
     checkpoint_dir = os.path.join(os.getcwd(), "checkpoints", config.job_name)
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
@@ -68,22 +67,28 @@ def train_model(
         start = t.time()
         with torch.cuda.amp.autocast(dtype=data_type):
             model.train()
-            train_single_epoch(train_dl,
-                               epoch,
-                               accelerator,
-                               optimizer,
-                               lr_scheduler,
-                               device,
-                               model,
-                               config,
-                               logger,
-                               log_writer=log_writer)
+            train_single_epoch(
+                train_dl,
+                epoch,
+                accelerator,
+                optimizer,
+                lr_scheduler,
+                device,
+                model,
+                config,
+                logger,
+                log_writer=log_writer,
+            )
 
-            test_single_epoch(test_dl, epoch, device, model, config, logger, log_writer=log_writer)
+            test_single_epoch(
+                test_dl, epoch, device, model, config, logger, log_writer=log_writer
+            )
 
             end = t.time()
 
-            logger.info("Epoch " + str(epoch) + " done. Time elapsed: " + str(end - start))
+            logger.info(
+                "Epoch " + str(epoch) + " done. Time elapsed: " + str(end - start)
+            )
 
         # save model checkpoints
         checkpoint = {
@@ -92,7 +97,7 @@ def train_model(
             "optimizer": optimizer.state_dict(),
             "lr_scheduler": lr_scheduler.state_dict(),
         }
-            
+
         # Save a different checkpoint for every epoch.
         torch.save(checkpoint, os.path.join(checkpoint_dir, f"{epoch}_checkpoint.pth"))
 

@@ -19,6 +19,64 @@ def seed_everything(seed=0, cudnn_deterministic=True):
     torch.cuda.manual_seed_all(seed)
 
 
+def patchify(imgs, patch_size, frame_patch_size):
+    N, C, T, H, W = imgs.shape
+    ph, pw = patch_size
+    assert H % ph == 0 and W % pw == 0 and T % frame_patch_size == 0
+    h = H // ph
+    w = W // pw
+    t = T // frame_patch_size
+
+    x = imgs.reshape(shape=(N, C, t, frame_patch_size, h, ph, w, pw))
+    x = torch.einsum("nctuhpwq->nthwupqc", x)
+    x = x.reshape(shape=(N, t * h * w, frame_patch_size * ph * pw * C))
+    return x
+
+
+def unpatchify(x, patch_size, frame_patch_size, grid_size):
+    N, L, D = x.shape
+
+    ph, pw = patch_size
+    h, w = grid_size
+    t = L // h // w
+    C = D // frame_patch_size // ph // pw
+
+    x = x.reshape(shape=(N, t, h, w, frame_patch_size, ph, pw, C))
+
+    x = torch.einsum("nthwupqc->nctuhpwq", x)
+    T, H, W = t * frame_patch_size, h * ph, w * pw
+    imgs = x.reshape(shape=(N, C, T, H, W))
+    return imgs
+
+
+# TODO: Add tests
+def apply_mask_to_batch(model, batch, mask, frame_patch_size):
+    """Replaces values in batch with nan where mask is True. Also returns mask in same shape as batch.
+    model: MaskedAutencoderViT
+    mask: (batch_size, frames // frame_patch_size)
+    batch: (batch_size, num_channels, frames, electrode_height, electrode_width)
+    frame_patch_size: The number of
+    """
+    patch_size = model.patch_embed.patch_size
+    grid_size = model.patch_embed.grid_size
+    batch_patch = patchify(batch, patch_size, frame_patch_size)
+    # Mask is for every frame_patch_size frames, so expand to align with batch
+    # tensor and fill in masked out information with nan.
+    _, _, C = batch_patch.shape
+    B, T = mask.shape
+    # Repeats mask values to align with batch dimensions.
+    mask = mask.repeat_interleave(C, axis=1).view(B, T, C).to(torch.bool)
+    masked_batch = unpatchify(
+        batch_patch.masked_fill(mask, torch.nan),
+        patch_size,
+        frame_patch_size,
+        grid_size,
+    )
+    mask = unpatchify(mask, patch_size, frame_patch_size, grid_size)
+
+    return masked_batch, mask
+
+
 # TODO: Test this function.
 def preprocess_neural_data(
     signal: np.array,
@@ -29,6 +87,7 @@ def preprocess_neural_data(
     norm: Optional[str] = None,
     means: Optional[np.array] = None,
     stds: Optional[np.array] = None,
+    env: Optional[bool] = False,
     pad_before_sample: bool = False,
     dtype=np.float32,
 ) -> np.array:
@@ -46,6 +105,7 @@ def preprocess_neural_data(
         norm (Optional[str], optional): If "hour" then will use the passed means and stds to normalize the signal. Defaults to None.
         means (Optional[np.array], optional): Of shape [num_electrodes]. Means for each electrode. Defaults to None.
         stds (Optional[np.array], optional): Of shape [num_electrodes]. Standard deviations for each electrode. Defaults to None.
+        env (Optional[bool]): If true then apply power envelope to signal after filtering. Else just return filtered signal.
         pad_before_sample (bool): If true then samples which are not the desired length will be padded with 0's before the actual extracted signal. Useful if sample is taken from the very start of the signal.
 
     Returns:
@@ -57,17 +117,6 @@ def preprocess_neural_data(
             c = freq bands
     """
 
-    def norm(input, ch_idx):
-        output = input - means[ch_idx] / stds[ch_idx]
-
-        return output
-
-    if norm == "hour":
-
-        # z-score signal for each channel separately
-        for i in range(0, 64):
-            signal[i, :] = norm(signal[i], i)
-
     # Extract frequency bands if provided.
     if bands:
         filtered_signal = np.zeros((len(bands), 64, signal.shape[1]))
@@ -77,34 +126,44 @@ def preprocess_neural_data(
                 4, freqs, btype="bandpass", analog=False, output="sos", fs=fs
             )
             filtered_signal[i] = scipy.signal.sosfiltfilt(sos, signal)
-            filtered_signal[i] = np.abs(scipy.signal.hilbert(filtered_signal[i]))
+            if env:
+                filtered_signal[i] = np.abs(scipy.signal.hilbert(filtered_signal[i]))
     else:
         # Add band axis of size 1 for non-filtered data.
         filtered_signal = np.expand_dims(signal, axis=0)
 
-    resampled = resample_mean_signals(filtered_signal, fs, new_fs)
+    if fs != new_fs:
+        resampled = resample_mean_signals(filtered_signal, fs, new_fs)
+    else:
+        resampled = filtered_signal
     # rearrange into shape c*t*d*h*w, where
     # c = freq bands
     # t = number of datapoints within a sample
     # h = height of grid (currently 8)
     # w = width of grid (currently 8)
     preprocessed_signal = rearrange(
-        np.array(resampled, dtype=np.float32), "c (h w) t -> c t h w", h=constants.GRID_SIZE, w=constants.GRID_SIZE
+        np.array(resampled, dtype=np.float32),
+        "c (h w) t -> c t h w",
+        h=constants.GRID_SIZE,
+        w=constants.GRID_SIZE,
     )
 
     # Zero-pad if sample is too short.
-    expected_sample_length = sample_secs * new_fs
+    expected_sample_length = int(sample_secs * new_fs / 1000)
     if preprocessed_signal.shape[1] < expected_sample_length:
-        padding = np.ones(
-            (
-                preprocessed_signal.shape[0],
-                expected_sample_length - preprocessed_signal.shape[1],
-                1,
-                8,
-                8,
-            ),
-            dtype=dtype,
-        ) * np.nan
+        padding = (
+            np.ones(
+                (
+                    preprocessed_signal.shape[0],
+                    expected_sample_length - preprocessed_signal.shape[1],
+                    1,
+                    8,
+                    8,
+                ),
+                dtype=dtype,
+            )
+            * np.nan
+        )
         if pad_before_sample:
             preprocessed_signal = np.concatenate((padding, preprocessed_signal), axis=1)
         else:
@@ -312,7 +371,7 @@ def get_signal_correlations(signal_a, signal_b):
     Args:
         signal_a (tensor): shape [batch, num_electrodes, channels, observations]
         signal_b (tensor): shape [batch, num_electrodes, channels, observations]
-        
+
     Returns:
         tensor of shape [num_electrodes, channels] where each entry is the correlation found between
         the two signals for that electrode and channel.
@@ -320,15 +379,17 @@ def get_signal_correlations(signal_a, signal_b):
     correlation_matrix = torch.zeros(
         signal_a.shape[0], signal_a.shape[1], signal_a.shape[2]
     ).fill_(torch.nan)
-    
+
     for batch in range(signal_a.shape[0]):
         for electrode in range(signal_a.shape[1]):
             for channel in range(signal_a.shape[2]):
                 correlation_matrix[batch, electrode, channel] = torch.corrcoef(
-                    torch.stack([
-                        signal_a[batch, electrode, channel],
-                        signal_b[batch, electrode, channel],
-                    ])
+                    torch.stack(
+                        [
+                            signal_a[batch, electrode, channel],
+                            signal_b[batch, electrode, channel],
+                        ]
+                    )
                 )[0, 1]
-                
+
     return correlation_matrix.mean(dim=0)

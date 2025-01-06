@@ -92,9 +92,6 @@ def arg_parser():
 
     # ECoGDataConfig parameters
     parser.add_argument(
-        "--norm", type=str, help="If 'batch' then will normalize data within a batch."
-    )
-    parser.add_argument(
         "--data-size",
         type=float,
         help="Percentage of data to include in training/testing.",
@@ -162,6 +159,11 @@ def arg_parser():
         "--print-freq",
         type=int,
         help="Number of steps to print training progress after.",
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        help="Weight factor for loss computation. Alpha=1 is -correlation loss, alpha = 0 is mse loss.",
     )
 
     args = parser.parse_args()

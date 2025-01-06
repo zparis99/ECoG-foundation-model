@@ -12,7 +12,7 @@ import logging
 import json
 
 from config import ECoGDataConfig, VideoMAEExperimentConfig
-from utils import preprocess_neural_data, get_signal_stats
+from utils import preprocess_neural_data
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         self.bands = config.bands
         self.fs = config.original_fs
         self.new_fs = config.new_fs
-        self.sample_secs = config.sample_length
+        self.sample_length = config.sample_length
 
         # Load or initialize cache
         if os.path.exists(self.CACHE_FILE):
@@ -35,24 +35,18 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         else:
             cache = {}
 
-        # Check if this path is in cache
+        # Check if this path is in cache, to save time.
         if self.path in cache:
             cached_data = cache[self.path]
             self.max_samples = cached_data["max_samples"]
-            self.means = np.array(cached_data["means"])
-            self.stds = np.array(cached_data["stds"])
         else:
             # Compute and cache if not found
             signal = self._load_grid_data()
             self.max_samples = signal.shape[1] / self.fs / config.sample_length
 
-            self.means, self.stds = get_signal_stats(signal)
-
             # Update cache
             cache[self.path] = {
                 "max_samples": float(self.max_samples),
-                "means": self.means.tolist() if self.means is not None else None,
-                "stds": self.stds.tolist() if self.stds is not None else None,
             }
 
             # Save updated cache
@@ -75,8 +69,8 @@ class ECoGDataset(torch.utils.data.IterableDataset):
         # this is to make sure we stop streaming from our dataset after the max number of samples is reached
         while self.index < self.max_samples:
             # Exclude examples where the sample goes past the end of the signal.
-            start_sample = self.index * self.sample_secs * self.fs
-            end_sample = (self.index + 1) * self.sample_secs * self.fs
+            start_sample = self.index * self.sample_length * self.fs
+            end_sample = (self.index + 1) * self.sample_length * self.fs
             if end_sample > self.signal.shape[1]:
                 self.index = self.max_samples
                 break
@@ -99,11 +93,9 @@ class ECoGDataset(torch.utils.data.IterableDataset):
             current_sample,
             self.fs,
             self.new_fs,
-            self.sample_secs,
+            self.sample_length,
             bands=self.bands,
-            norm=self.config.norm,
-            means=self.means,
-            stds=self.stds,
+            env=self.config.env,
         )
 
         end = t.time()

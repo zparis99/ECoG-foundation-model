@@ -7,14 +7,16 @@ import math
 import os
 from torch.utils.tensorboard import SummaryWriter
 from matplotlib.figure import Figure
+from utils import apply_mask_to_batch
 
 
 def scale_signal_minmax(signal, reference):
     """
     Scale a signal to match the min/max range of a reference signal.
     """
-    signal_min, signal_max = signal.min(), signal.max()
-    ref_min, ref_max = reference.min(), reference.max()
+
+    signal_min, signal_max = signal.nanmin(), signal.nanmax()
+    ref_min, ref_max = reference.nanmin(), reference.nanmax()
 
     if signal_max == signal_min:
         return signal
@@ -42,19 +44,20 @@ def interpolate_signal(signal, target_length):
     """
     original_steps = np.arange(len(signal))
     target_steps = np.linspace(0, len(signal) - 1, target_length)
-    interpolator = interp1d(original_steps, signal, kind="cubic")
+    interpolator = interp1d(original_steps, signal)
     return interpolator(target_steps)
 
 
 def plot_multi_band_reconstruction(
     original_signal,
     reconstructed_signal,
-    t_patch_size,
+    pred_t_dim,
     batch_idx=0,
     height_idx=0,
     width_idx=0,
     epoch=0,
     scale_output=False,
+    seen_signal=None,
 ):
     """
     Plot original and reconstructed signals for all bands in a subplot grid.
@@ -65,9 +68,9 @@ def plot_multi_band_reconstruction(
     original_signal : np.ndarray
         Original signal of shape [batch_size, num_bands, time_steps, height, width]
     reconstructed_signal : np.ndarray
-        Reconstructed signal of shape [batch_size, num_bands, time_steps/t_patch_size, height, width]
-    t_patch_size : int
-        Number of frames in each temporal patch
+        Reconstructed signal of shape [batch_size, num_bands, time_steps * (pred_t_dim / frame_patch_size), height, width]
+    pred_t_dim : int
+        Number of temporal outputs per patch
     batch_idx : int
         Index of the batch to plot
     height_idx : int
@@ -78,6 +81,8 @@ def plot_multi_band_reconstruction(
         Current training epoch (for title)
     scale_output : bool
         Whether to scale the reconstructed signal to match the original
+    seen_signal: Optional[np.ndarray]
+        Optional signal which has nan values filled for the masked out portion of the signal.
 
     Returns:
     --------
@@ -98,6 +103,10 @@ def plot_multi_band_reconstruction(
         fontsize=16,
         y=1.02,
     )
+    # We generate pred_t_dim predictions per patch so setup times of predictions here.
+    reconstruction_prediction_times = np.linspace(
+        0, original_signal.shape[2] - 1, pred_t_dim
+    ).astype(np.int64)
 
     # Create subplots for each band
     for band_idx in range(num_bands):
@@ -107,12 +116,11 @@ def plot_multi_band_reconstruction(
             batch_idx, band_idx, :, height_idx, width_idx
         ]
 
-        # Interpolate reconstructed signal
-        reconstructed = interpolate_signal(reconstructed_downsampled, len(original))
-
         # Scale reconstructed signal if requested
         if scale_output:
-            reconstructed = scale_signal_minmax(reconstructed, original)
+            reconstructed_downsampled = scale_signal_minmax(
+                reconstructed_downsampled, original
+            )
 
         # Create subplot
         ax = fig.add_subplot(num_rows, num_cols, band_idx + 1)
@@ -120,23 +128,36 @@ def plot_multi_band_reconstruction(
         # Plot signals
         time_steps = np.arange(len(original))
         ax.plot(time_steps, original, label="Original", color="blue", alpha=0.7)
+        if seen_signal is not None:
+            seen_electrode = seen_signal[batch_idx, band_idx, :, height_idx, width_idx]
+            ax.plot(
+                time_steps,
+                seen_electrode,
+                label="Seen Signal",
+                color="yellow",
+                alpha=0.8,
+            )
         ax.plot(
-            time_steps,
-            reconstructed,
+            reconstruction_prediction_times,
+            reconstructed_downsampled,
             label="Reconstructed",
             color="red",
             alpha=0.7,
             linestyle="--",
         )
 
-        # Plot patch boundaries
-        for i in range(0, len(original), t_patch_size):
-            ax.axvline(x=i, color="gray", alpha=0.2, linestyle=":")
-
         # Calculate metrics
-        mse = np.mean((original - reconstructed) ** 2)
-        mae = np.mean(np.abs(original - reconstructed))
-        corr = np.corrcoef(original, reconstructed)[0, 1]
+        original_no_nan = original[~np.isnan(original)]
+        # Interpolate reconstructed signal
+        reconstructed_no_nan = reconstructed_downsampled[
+            ~np.isnan(reconstructed_downsampled)
+        ]
+        reconstructed_no_nan = interpolate_signal(
+            reconstructed_no_nan, len(original_no_nan)
+        )
+        mse = np.mean((original_no_nan - reconstructed_no_nan) ** 2)
+        mae = np.mean(np.abs(original_no_nan - reconstructed_no_nan))
+        corr = np.corrcoef(original_no_nan, reconstructed_no_nan)[0, 1]
 
         # Add metrics text
         metrics_text = f"MSE: {mse:.4f}\n" f"MAE: {mae:.4f}\n" f"Corr: {corr:.4f}"
