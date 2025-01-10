@@ -4,10 +4,11 @@
 import os
 import glob
 import numpy as np
+import torch
 import pandas as pd
 import scipy
 
-from utils import get_signal_stats, preprocess_neural_data
+from utils import preprocess_neural_data
 from downstream_tasks.encoding_decoding.config import EncodingDecodingDataConfig
 
 
@@ -20,6 +21,8 @@ class EncodingDecodingDataset:
         self.lag = config.lag
         self.new_fs = config.new_fs
         self.sample_secs = config.sample_length
+        # Track which electrodes are accessible and which are padding
+        self.padding_mask = None
 
         self.signal = self._load_grid_data()
         conversation_data = pd.read_csv(config.conversation_data_df_path, index_col=0)
@@ -36,17 +39,14 @@ class EncodingDecodingDataset:
         # since we take sample_length sec samples, the number of samples we can stream from our dataset is determined by the duration of the chunk in sec divided by sample_length.
         # Optionally can configure max_samples directly as well.
         self.max_samples = self.signal.shape[1] / self.fs / config.sample_length
-        if config.norm == "hour":
-            self.means, self.stds = get_signal_stats(self.signal)
-        else:
-            self.means = None
-            self.stds = None
 
         self.index = 0
 
     def _load_grid_data(self):
         grid_data = []
-        # Used to ensure all electrode data is of the same length, and to pad 0's later if needed.
+        # TODO: Test padding mask
+        self.padding_mask = torch.zeros(8, 8, dtype=bool)
+        # Used to ensure all electrode data is of the same length.
         expected_len = 0
         for i in range(64):
             curr_electrode_glob_path = self.electrode_glob_path.format(
@@ -85,6 +85,8 @@ class EncodingDecodingDataset:
                         )
 
                 grid_data.append(data)
+                # Update padding_mask to include this electrode as valid.
+                self.padding_mask[i // 8, i % 8] = True
         padded_data = []
         for data in grid_data:
             # Pad zero's for held out data.
@@ -99,7 +101,7 @@ class EncodingDecodingDataset:
         """Iterate through dataset for encoding task.
 
         Yields:
-            tuple[np.array, np.array]: (word embedding, neural embedding)
+            tuple[np.array, np.array]: (word embedding, neural data)
         """
         while self.index < self.timed_word_data.shape[0]:
             word_data = self.timed_word_data.iloc[self.index]
@@ -108,24 +110,21 @@ class EncodingDecodingDataset:
             # without them. Same for VideoMAE dataloader.
             lag_start_time = word_data.loc["onset"] + self.lag
             lag_start_sample = int(lag_start_time / 1000 * self.fs)
+            # TODO: Change to ms.
             lag_end_sample = lag_start_sample + self.fs * self.sample_secs
-            
-            # If we are gathering a sample from before the start of the signal, pad before the sample.
-            pad_before_sample = False
-            if lag_start_sample < 0:
-                pad_before_sample = True
-                lag_start_sample = 0
-                
-            curr_sample = self.signal[
-                :, lag_start_sample : lag_end_sample
-            ]
+
+            # If we are gathering a sample from before the start of the signal or ends after the signal continue.
+            if lag_start_sample < 0 or lag_end_sample > self.signal.shape[1]:
+                self.index += 1
+                continue
+
+            curr_sample = self.signal[:, lag_start_sample:lag_end_sample]
 
             preprocessed_signal = preprocess_neural_data(
                 curr_sample,
                 self.fs,
                 self.new_fs,
                 self.sample_secs,
-                pad_before_sample=pad_before_sample,
             )
 
             yield word_data.loc["embeddings"], preprocessed_signal

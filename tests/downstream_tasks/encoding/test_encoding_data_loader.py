@@ -129,13 +129,13 @@ def test_correctly_loads_word_and_neural_data(
 
         # Expected data must be reshaped to match VideoMAE model input shape.
         reshaped_expected_electrode_data = np.zeros(
-            (1, sample_duration * config.new_fs, 1, 8, 8)
+            (1, sample_duration * config.new_fs, 8, 8)
         )
         for j in range(64):
             electrode_row_idx = j // 8
             electrode_col_idx = j % 8
             reshaped_expected_electrode_data[
-                0, :, 0, electrode_row_idx, electrode_col_idx
+                0, :, electrode_row_idx, electrode_col_idx
             ] = (np.ones(sample_duration * config.new_fs) * onsets[i] * (j + 1))
 
         assert np.allclose(neural_data, reshaped_expected_electrode_data)
@@ -188,13 +188,13 @@ def test_handles_positive_lag_correctly(
 
         # Expected data must be reshaped to match VideoMAE model input shape.
         reshaped_expected_electrode_data = np.zeros(
-            (1, sample_duration * config.new_fs, 1, 8, 8)
+            (1, sample_duration * config.new_fs, 8, 8)
         )
         for j in range(64):
             electrode_row_idx = j // 8
             electrode_col_idx = j % 8
             reshaped_expected_electrode_data[
-                0, :, 0, electrode_row_idx, electrode_col_idx
+                0, :, electrode_row_idx, electrode_col_idx
             ] = (np.ones(sample_duration * config.new_fs) * onsets[i] * (j + 1))
 
         assert np.allclose(neural_data, reshaped_expected_electrode_data)
@@ -247,13 +247,13 @@ def test_handles_negative_lag_correctly(
 
         # Expected data must be reshaped to match VideoMAE model input shape.
         reshaped_expected_electrode_data = np.zeros(
-            (1, sample_duration * config.new_fs, 1, 8, 8)
+            (1, sample_duration * config.new_fs, 8, 8)
         )
         for j in range(64):
             electrode_row_idx = j // 8
             electrode_col_idx = j % 8
             reshaped_expected_electrode_data[
-                0, :, 0, electrode_row_idx, electrode_col_idx
+                0, :, electrode_row_idx, electrode_col_idx
             ] = (np.ones(sample_duration * config.new_fs) * onsets[i] * (j + 1))
 
         assert np.allclose(neural_data, reshaped_expected_electrode_data)
@@ -290,33 +290,12 @@ def test_can_handle_padding_signal_when_lag_is_before_signal_start(
 
     data_loader = EncodingDecodingDataset(config)
 
+    # Should not return an example for data outside of signal bounds.
     num_examples = 0
-    for i, (word_embedding, neural_data) in enumerate(data_loader):
+    for _ in data_loader:
         num_examples += 1
 
-        assert np.allclose(word_embedding, embeddings[i])
-
-        # Expected data must be reshaped to match VideoMAE model input shape.
-        reshaped_expected_electrode_data = np.zeros(
-            (1, sample_duration * config.new_fs, 1, 8, 8)
-        )
-        for j in range(64):
-            electrode_row_idx = j // 8
-            electrode_col_idx = j % 8
-            # Signal should be a second of padded 0's and a second of 1's
-            expected_signal = np.concatenate(
-                [
-                    np.zeros(int(sample_duration / 2 * config.new_fs)),
-                    np.ones(int(sample_duration / 2 * config.new_fs)),
-                ]
-            )
-            reshaped_expected_electrode_data[
-                0, :, 0, electrode_row_idx, electrode_col_idx
-            ] = expected_signal * (j + 1)
-
-        assert np.allclose(neural_data, reshaped_expected_electrode_data)
-
-    assert num_examples == onsets.shape[0]
+    assert num_examples == 0
 
 
 def test_can_handle_padding_signal_when_end_of_sample_is_after_signal_ends(
@@ -349,29 +328,8 @@ def test_can_handle_padding_signal_when_end_of_sample_is_after_signal_ends(
     data_loader = EncodingDecodingDataset(config)
 
     num_examples = 0
-    for i, (word_embedding, neural_data) in enumerate(data_loader):
+    # Should skip examples which go over end of signal.
+    for _ in data_loader:
         num_examples += 1
 
-        assert np.allclose(word_embedding, embeddings[i])
-
-        # Expected data must be reshaped to match VideoMAE model input shape.
-        reshaped_expected_electrode_data = np.zeros(
-            (1, sample_duration * config.new_fs, 1, 8, 8)
-        )
-        for j in range(64):
-            electrode_row_idx = j // 8
-            electrode_col_idx = j % 8
-            # Signal should be a second of padded 0's and a second of 1's
-            expected_signal = np.concatenate(
-                [
-                    np.ones(int(sample_duration / 2 * config.new_fs)),
-                    np.zeros(int(sample_duration / 2 * config.new_fs)),
-                ]
-            )
-            reshaped_expected_electrode_data[
-                0, :, 0, electrode_row_idx, electrode_col_idx
-            ] = expected_signal * (j + 1)
-
-        assert np.allclose(neural_data, reshaped_expected_electrode_data)
-
-    assert num_examples == onsets.shape[0]
+    assert num_examples == 0

@@ -7,8 +7,9 @@ import numpy as np
 from accelerate import Accelerator, DeepSpeedPlugin
 
 import utils
-from models import *
 from config import VideoMAEExperimentConfig
+import constants
+from mae_st_util.models_mae import MaskedAutoencoderViT
 
 
 def system_setup():
@@ -70,72 +71,28 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
     """
     model_config = config.video_mae_task_config.vit_config
 
-    ### class token config ###
-    use_cls_token = model_config.use_cls_token
-
-    ### Loss Config ###
-    use_contrastive_loss = config.video_mae_task_config.use_contrastive_loss
-    constrastive_loss_weight = 1.0
-    use_cls_token = (
-        True if use_contrastive_loss else use_cls_token
-    )  # if using contrastive loss, we need to add a class token
-
-    input_size = [1, 8, 8]
-    print("input_size", input_size)
-    num_frames = config.ecog_data_config.sample_length * config.ecog_data_config.new_fs
-
-    img_size = (1, 8, 8)
-    patch_dims = tuple(model_config.patch_dims)
+    num_frames = int(
+        config.ecog_data_config.sample_length * config.ecog_data_config.new_fs
+    )
     frame_patch_size = model_config.frame_patch_size
     num_patches = int(  # Defining the number of patches
-        (img_size[0] / patch_dims[0])
-        * (img_size[1] / patch_dims[1])
-        * (img_size[2] / patch_dims[2])
+        constants.GRID_SIZE**2
         * num_frames
-        / frame_patch_size
+        // model_config.patch_size
+        // frame_patch_size
     )
 
-    num_encoder_patches = int(num_patches * (1 - config.video_mae_task_config.tube_mask_ratio))
-    num_decoder_patches = int(num_patches * (1 - config.video_mae_task_config.decoder_mask_ratio))
+    num_encoder_patches = int(
+        num_patches * (1 - config.video_mae_task_config.encoder_mask_ratio)
+    )
+    num_decoder_patches = int(
+        num_patches * config.video_mae_task_config.pct_masks_to_decode
+    )
     print("num_patches", num_patches)
     print("num_encoder_patches", num_encoder_patches)
     print("num_decoder_patches", num_decoder_patches)
 
-    if model_config.dim == 0:
-        dim = (
-            patch_dims[0]
-            * patch_dims[1]
-            * patch_dims[2]
-            * frame_patch_size
-            * len(config.ecog_data_config.bands)
-        )
-    else:
-        dim = model_config.dim
-
-    if model_config.mlp_dim == 0:
-        mlp_dim = (
-            patch_dims[0]
-            * patch_dims[1]
-            * patch_dims[2]
-            * frame_patch_size
-            * len(config.ecog_data_config.bands)
-        )
-    else:
-        mlp_dim = model_config.mlp_dim
-
-    model = SimpleViT(
-        image_size=img_size,  # depth, height, width
-        image_patch_size=patch_dims,  # depth, height, width patch size - change width from patch_dims to 1
-        frames=num_frames,
-        frame_patch_size=frame_patch_size,
-        depth=12,
-        heads=12,
-        dim=dim,
-        mlp_dim=mlp_dim,
-        channels=len(config.ecog_data_config.bands),
-        use_rope_emb=False,
-        use_cls_token=model_config.use_cls_token,
-    )
+    model = create_model(config)
     utils.count_params(model)
 
     no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
@@ -158,15 +115,49 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
         },
     ]
 
-    optimizer = torch.optim.AdamW(opt_grouped_parameters, lr=config.trainer_config.max_learning_rate)
+    optimizer = torch.optim.AdamW(
+        opt_grouped_parameters, lr=config.trainer_config.max_learning_rate
+    )
 
     lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=config.trainer_config.max_learning_rate,
         epochs=config.trainer_config.num_epochs,
-        steps_per_epoch=math.ceil(num_train_samples / config.ecog_data_config.batch_size),
+        steps_per_epoch=math.ceil(
+            num_train_samples / config.ecog_data_config.batch_size
+        ),
     )
 
     print("\nDone with model preparations!")
 
     return model, optimizer, lr_scheduler, num_patches
+
+
+def create_model(config: VideoMAEExperimentConfig):
+    model_config = config.video_mae_task_config.vit_config
+    num_frames = int(
+        config.ecog_data_config.sample_length * config.ecog_data_config.new_fs
+    )
+    model = MaskedAutoencoderViT(
+        img_size=constants.GRID_SIZE,
+        patch_size=model_config.patch_size,
+        in_chans=len(config.ecog_data_config.bands),
+        embed_dim=model_config.dim,
+        depth=model_config.depth,
+        num_heads=model_config.num_heads,
+        decoder_embed_dim=model_config.decoder_embed_dim,
+        decoder_depth=model_config.decoder_depth,
+        decoder_num_heads=model_config.decoder_num_heads,
+        mlp_ratio=model_config.mlp_ratio,
+        num_frames=num_frames,
+        t_patch_size=model_config.frame_patch_size,
+        no_qkv_bias=model_config.no_qkv_bias,
+        sep_pos_embed=model_config.sep_pos_embed,
+        trunc_init=model_config.trunc_init,
+        cls_embed=model_config.use_cls_token,
+        # TODO: Make this configurable.
+        pred_t_dim=num_frames,
+        img_mask=None,
+        pct_masks_to_decode=config.video_mae_task_config.pct_masks_to_decode,
+    )
+    return model

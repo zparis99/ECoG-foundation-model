@@ -15,6 +15,7 @@ from downstream_tasks.encoding_decoding.utils import (
 
 
 def main(args):
+    # TODO: This needs to be setup to work with the new model.
     # Setup config
     experiment_config = create_encoding_decoding_experiment_config(args)
     inference_device_name = experiment_config.encoding_task_config.embedding_device

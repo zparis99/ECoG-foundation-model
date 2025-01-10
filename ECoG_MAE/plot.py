@@ -1,188 +1,254 @@
-import pandas as pd
-import numpy as np
-import re
-import os
+# Coded with help from Claude :)
+
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.gridspec import GridSpec
+import numpy as np
+from scipy.interpolate import interp1d
+import math
+import os
+from torch.utils.tensorboard import SummaryWriter
+from matplotlib.figure import Figure
+from utils import apply_mask_to_batch
 
 
-def plot_signal(job_name, signal, id):
+def scale_signal_minmax(signal, reference):
+    """
+    Scale a signal to match the min/max range of a reference signal.
+    """
 
-    plt.figure(figsize=(8, 3))
-    plt.plot(signal)
-    plt.title("Training signal")
-    dir = os.getcwd() + f"/results/signals/"
-    if not os.path.exists(dir):
-        os.makedirs(dir)
-    plt.savefig(dir + f"{job_name}_{id}_signal.png")
+    signal_min, signal_max = signal.nanmin(), signal.nanmax()
+    ref_min, ref_max = reference.nanmin(), reference.nanmax()
 
+    if signal_max == signal_min:
+        return signal
 
-def plot_signal_stats(job_name, signal_means, signal_stds):
-
-    plt.figure(figsize=(8, 3))
-    plt.plot(signal_means)
-    plt.title("Training signal means")
-    dir = os.getcwd() + f"/results/signals/"
-    if not os.path.exists(dir):
-        os.makedirs(dir)
-    plt.savefig(dir + f"{job_name}_signal_means.png")
-
-    plt.figure(figsize=(8, 3))
-    plt.plot(signal_stds)
-    plt.title("Training signal stds")
-    dir = os.getcwd() + f"/results/signals/"
-    if not os.path.exists(dir):
-        os.makedirs(dir)
-    plt.savefig(dir + f"{job_name}_signal_stds.png")
+    scaled = (signal - signal_min) / (signal_max - signal_min)
+    scaled = scaled * (ref_max - ref_min) + ref_min
+    return scaled
 
 
-def plot_losses(job_name, train_losses, seen_train_losses, test_losses, seen_test_losses):
+def interpolate_signal(signal, target_length):
+    """
+    Interpolate a signal to a target length.
 
-    fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+    Parameters:
+    -----------
+    signal : np.ndarray
+        Signal to interpolate
+    target_length : int
+        Desired length after interpolation
 
-    axs[0, 0].plot(train_losses)
-    axs[0, 0].set_title("Recon training losses")
-
-    axs[0, 1].plot(seen_train_losses)
-    axs[0, 1].set_title("Seen training losses")
-
-    axs[1, 0].plot(test_losses)
-    axs[1, 0].set_title("Recon test losses")
-
-    axs[1, 1].plot(seen_test_losses)
-    axs[1, 1].set_title("Seen test losses")
-
-    plt.tight_layout()
-
-    dir = os.getcwd() + f"/results/loss/"
-    if not os.path.exists(dir):
-        os.makedirs(dir)
-    plt.savefig(dir + f"{job_name}_losses.png")
+    Returns:
+    --------
+    np.ndarray
+        Interpolated signal of length target_length
+    """
+    original_steps = np.arange(len(signal))
+    target_steps = np.linspace(0, len(signal) - 1, target_length)
+    interpolator = interp1d(original_steps, signal)
+    return interpolator(target_steps)
 
 
-def plot_contrastive_loss(job_name, contrastive_losses):
-    plt.figure(figsize=(8, 3))
-    plt.plot(contrastive_losses)
-    plt.title("Training contrastive losses")
-    dir = os.getcwd() + f"/results/loss/"
-    if not os.path.exists(dir):
-        os.makedirs(dir)
-    plt.savefig(dir + f"{job_name}_contrastive_loss.png")
+def plot_multi_band_reconstruction(
+    original_signal,
+    reconstructed_signal,
+    pred_t_dim,
+    batch_idx=0,
+    height_idx=0,
+    width_idx=0,
+    epoch=0,
+    scale_output=False,
+    seen_signal=None,
+):
+    """
+    Plot original and reconstructed signals for all bands in a subplot grid.
+    Returns the figure object instead of saving/showing.
 
+    Parameters:
+    -----------
+    original_signal : np.ndarray
+        Original signal of shape [batch_size, num_bands, time_steps, height, width]
+    reconstructed_signal : np.ndarray
+        Reconstructed signal of shape [batch_size, num_bands, time_steps * (pred_t_dim / frame_patch_size), height, width]
+    pred_t_dim : int
+        Number of temporal outputs per patch
+    batch_idx : int
+        Index of the batch to plot
+    height_idx : int
+        Height position to plot
+    width_idx : int
+        Width position to plot
+    epoch : int
+        Current training epoch (for title)
+    scale_output : bool
+        Whether to scale the reconstructed signal to match the original
+    seen_signal: Optional[np.ndarray]
+        Optional signal which has nan values filled for the masked out portion of the signal.
 
-def plot_correlation(job_name, df, fn):
+    Returns:
+    --------
+    matplotlib.figure.Figure
+        The generated figure object
+    """
+    num_bands = original_signal.shape[1]
 
-    dir = os.getcwd() + f"/results/correlation/"
-    if not os.path.exists(dir):
-        os.makedirs(dir)
+    # Calculate subplot grid dimensions
+    num_cols = min(3, num_bands)
+    num_rows = math.ceil(num_bands / num_cols)
 
-    groups = df.groupby(["elec", "band"])
-    # test to do df.dl_i instead #TODO
-    df["x"] = groups.cumcount()
+    # Create figure with subplots
+    fig = Figure(figsize=(6 * num_cols, 4 * num_rows))
+    fig.suptitle(
+        f"Multi-band Signal Reconstruction (Epoch {epoch})\n"
+        f"Electrode ({height_idx}, {width_idx})",
+        fontsize=16,
+        y=1.02,
+    )
+    # We generate pred_t_dim predictions per patch so setup times of predictions here.
+    reconstruction_prediction_times = np.linspace(
+        0, original_signal.shape[2] - 1, pred_t_dim
+    ).astype(np.int64)
 
-    # plotting
-    pdf_pages = PdfPages(dir + f"{job_name}_{fn}.pdf")
+    # Create subplots for each band
+    for band_idx in range(num_bands):
+        # Extract signals for this band
+        original = original_signal[batch_idx, band_idx, :, height_idx, width_idx]
+        reconstructed_downsampled = reconstructed_signal[
+            batch_idx, band_idx, :, height_idx, width_idx
+        ]
 
-    colors = {"theta": "g", "alpha": "r", "beta": "b", "gamma": "c", "highgamma": "m"}
-
-    elecs = df.groupby("elec")
-
-    subplot_height_ratios = [1, 1, 1, 1, 1]
-
-    # Iterate over each elec group
-    for key, elec in elecs:
-        fig = plt.figure(figsize=(8, 6))
-        gs = fig.add_gridspec(nrows=5, ncols=1, height_ratios=subplot_height_ratios)
-
-        # Iterate over each band within the elec group
-        for i, (_, band_group) in enumerate(elec.groupby("band")):
-            ax = fig.add_subplot(gs[i, 0])
-
-            # Plot 'corr' against 'x' for the band
-            ax.plot(
-                band_group["x"],
-                band_group["corr"],
-                label=f'{band_group["band"].iloc[0]}',
-                color=colors[band_group["band"].iloc[0]],
-                lw=0.25,
+        # Scale reconstructed signal if requested
+        if scale_output:
+            reconstructed_downsampled = scale_signal_minmax(
+                reconstructed_downsampled, original
             )
 
-            # Set title on the right side
-            ax.set_title(f'{band_group["band"].iloc[0]}', loc="right")
+        # Create subplot
+        ax = fig.add_subplot(num_rows, num_cols, band_idx + 1)
 
-            # Hide x ticks and labels on all but the bottom subplot
-            if i < len(colors) - 1:
-                ax.set_xticks([])
-                ax.set_xticklabels([])
-
-            # Set x axis label only on the bottom subplot
-            if i == len(colors) - 1:
-                ax.set_xlabel("Iteration")
-
-            ax.set_ylabel("Corr (r)")
-
-            # ax.legend()
-
-        # Set title for the entire PDF page
-        fig.suptitle(f"G{key}", fontsize=16)
-
-        # Adjust layout and save the subplot to the PDF file
-        fig.tight_layout(
-            rect=[0, 0.03, 1, 0.95]
-        )  # Add a little space at the top for the title
-        pdf_pages.savefig(fig)
-        plt.close(fig)
-
-    # Close the PDF file
-    pdf_pages.close()
-
-
-def plot_recon_signals(job_name, num_epochs, df):
-
-    dir = os.getcwd() + f"/results/recon_signals/"
-    if not os.path.exists(dir):
-        os.makedirs(dir)
-
-    # plotting
-    pdf_pages = PdfPages(dir + f"{job_name}_recon_signals.pdf")
-    elecs = df.groupby("elec")
-
-    for key, elec in elecs:
-
-        fig, axs = plt.subplots(int(np.ceil(num_epochs / 2)), 2, figsize=(10, 15))
-
-        axs = axs.flatten()
-
-        for e, ax in zip(elec.epoch, axs):
-
+        # Plot signals
+        time_steps = np.arange(len(original))
+        ax.plot(time_steps, original, label="Original", color="blue", alpha=0.7)
+        if seen_signal is not None:
+            seen_electrode = seen_signal[batch_idx, band_idx, :, height_idx, width_idx]
             ax.plot(
-                np.linspace(0, len(elec.iloc[e, :].x[0]), len(elec.iloc[e, :].x[0])),
-                elec.iloc[e, :].x[0],
-                label="original",
-                color="b",
-                lw=0.25,
+                time_steps,
+                seen_electrode,
+                label="Seen Signal",
+                color="yellow",
+                alpha=0.8,
             )
-            ax.plot(
-                np.linspace(0, len(elec.iloc[e, :].y[0]), len(elec.iloc[e, :].y[0])),
-                elec.iloc[e, :].y[0],
-                label="reconstructed",
-                color="r",
-                lw=0.25,
-            )
+        ax.plot(
+            reconstruction_prediction_times,
+            reconstructed_downsampled,
+            label="Reconstructed",
+            color="red",
+            alpha=0.7,
+            linestyle="--",
+        )
 
-            ax.set_xlabel("datapoint in sample")
-            ax.set_ylabel("highgamma power envelope")
+        # Calculate metrics
+        original_no_nan = original[~np.isnan(original)]
+        # Interpolate reconstructed signal
+        reconstructed_no_nan = reconstructed_downsampled[
+            ~np.isnan(reconstructed_downsampled)
+        ]
+        reconstructed_no_nan = interpolate_signal(
+            reconstructed_no_nan, len(original_no_nan)
+        )
+        mse = np.mean((original_no_nan - reconstructed_no_nan) ** 2)
+        mae = np.mean(np.abs(original_no_nan - reconstructed_no_nan))
+        corr = np.corrcoef(original_no_nan, reconstructed_no_nan)[0, 1]
 
+        # Add metrics text
+        metrics_text = f"MSE: {mse:.4f}\n" f"MAE: {mae:.4f}\n" f"Corr: {corr:.4f}"
+        ax.text(
+            0.02,
+            0.98,
+            metrics_text,
+            transform=ax.transAxes,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+            fontsize=8,
+        )
+
+        # Customize subplot
+        ax.set_title(f"Band {band_idx}")
+        ax.set_xlabel("Time Steps")
+        ax.set_ylabel("Amplitude")
+        ax.grid(True, alpha=0.3)
+
+        # Only show legend for first subplot
+        if band_idx == 0:
             ax.legend()
-            ax.set_title("epoch " + str(e + 1))
 
-        plt.suptitle("Original and recon signal for elec G" + str(key))
+    # Adjust layout
+    fig.tight_layout()
+    return fig
 
-        fig.tight_layout()
 
-        pdf_pages.savefig(fig)
-        plt.close(fig)
+def save_reconstruction_plot(
+    original_signal,
+    reconstructed_signal,
+    epoch,
+    output_dir,
+    log_writer=None,
+    t_patch_size=4,
+    batch_idx=0,
+    height_idx=0,
+    width_idx=0,
+    tag="signal_reconstruction",
+    scale_output=False,
+):
+    """
+    Generate, save, and optionally log to TensorBoard a multi-band signal reconstruction plot.
 
-    # Close the PDF file
-    pdf_pages.close()
+    Parameters:
+    -----------
+    original_signal : np.ndarray
+        Original signal of shape [batch_size, num_bands, time_steps, height, width]
+    reconstructed_signal : np.ndarray
+        Reconstructed signal of shape [batch_size, num_bands, time_steps/t_patch_size, height, width]
+    epoch : int
+        Current epoch number
+    output_dir : str
+        Directory to save plot files
+    writer : torch.utils.tensorboard.SummaryWriter, optional
+        TensorBoard writer for logging plots
+    t_patch_size : int
+        Number of frames in each temporal patch
+    batch_idx : int
+        Index of the batch to visualize
+    height_idx : int
+        Height position to visualize
+    width_idx : int
+        Width position to visualize
+    tag : str
+        Tag for TensorBoard logging
+    scale_output : bool
+        Whether to scale the reconstructed signal to match the original
+    """
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Generate the figure
+    fig = plot_multi_band_reconstruction(
+        original_signal,
+        reconstructed_signal,
+        t_patch_size=t_patch_size,
+        batch_idx=batch_idx,
+        height_idx=height_idx,
+        width_idx=width_idx,
+        epoch=epoch,
+        scale_output=scale_output,
+    )
+
+    # Save to file
+    file_name = f"reconstruction_epoch_{epoch:04d}_scaled={scale_output}.png"
+    save_path = os.path.join(output_dir, file_name)
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+
+    # Log to TensorBoard if writer is provided
+    if log_writer is not None:
+        log_writer.add_figure(tag, fig, global_step=epoch)
+
+    plt.close(fig)
