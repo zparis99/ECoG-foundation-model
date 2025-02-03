@@ -32,6 +32,8 @@ class ECoGDataConfig:
     sample_length: int = 2
     # If true then shuffle the data before splitting to train and eval.
     shuffle: bool = False
+    # The maximum number of files to sample from at once. Limited by RAM.
+    max_open_files: int = 10
     # If True then uses a mock data loader.
     test_loader: bool = False
 

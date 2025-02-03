@@ -3,13 +3,17 @@ import os
 import numpy as np
 import mne
 import pytest
+from torch.utils.data import DataLoader
 
 from config import ECoGDataConfig
-from loader import ECoGDataset
+from loader import ECoGFileDataset
+
 
 @pytest.fixture
 def create_fake_mne_file_fn(tmp_path):
-    def create_fake_mne_file(ch_names: list[str], data: np.array, file_sampling_frequency: int):
+    def create_fake_mne_file(
+        ch_names: list[str], data: np.array, file_sampling_frequency: int, filename=None
+    ):
         """Creates a fake mne file in tmp_dir with ch_names channels and data.
 
         Args:
@@ -27,7 +31,10 @@ def create_fake_mne_file_fn(tmp_path):
 
         simulated_raw = mne.io.RawArray(data, info)
 
-        data_path = os.path.join(tmp_path, "simulated_data_raw.fif")
+        if filename is None:
+            data_path = os.path.join(tmp_path, "simulated_data_raw.fif")
+        else:
+            data_path = os.path.join(tmp_path, filename)
         simulated_raw.save(data_path)
 
         return data_path
@@ -36,15 +43,16 @@ def create_fake_mne_file_fn(tmp_path):
 
 
 @pytest.fixture
-def data_loader_creation_fn(create_fake_mne_file_fn):
-    def get_data_loader(
+def dataset_creation_fn(create_fake_mne_file_fn):
+    def get_dataset(
         config: ECoGDataConfig,
         data: np.array,
         ch_names: list[str] = ["G" + str(i + 1) for i in range(64 + 1)],
         file_sampling_frequency: int = 512,
-    ) -> ECoGDataset:
+        use_cache: bool = False,
+    ) -> ECoGFileDataset:
         config.original_fs = file_sampling_frequency
         fake_mne_file = create_fake_mne_file_fn(ch_names, data, file_sampling_frequency)
-        return ECoGDataset(fake_mne_file, config)
+        return ECoGFileDataset(fake_mne_file, config, use_cache=use_cache)
 
-    return get_data_loader
+    return get_dataset

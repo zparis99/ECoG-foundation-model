@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
 import torch
-from torch.utils.data import DataLoader
 
 import constants
 from config import ECoGDataConfig
 from mae_st_util.models_mae import MaskedAutoencoderViT
 from pretrain_engine import model_forward
+from loader import create_dataloader
 
 EMBEDDING_DIM = 64
 FRAMES_PER_SAMPLE = 40
@@ -107,23 +107,24 @@ def test_model_forward_with_mask_succeeds(model):
     assert torch.isclose(-correlations * 0.75 + mse * 0.25, loss)
 
 
-def test_model_with_data_loader_input_succeeds(model, data_loader_creation_fn):
+def test_model_with_data_loader_input_succeeds(model, create_fake_mne_file_fn):
     data_config = ECoGDataConfig(
         batch_size=16,
         bands=[[i + 1, i + 2] for i in range(NUM_BANDS)],
         new_fs=FRAMES_PER_SAMPLE / 2,
         sample_length=2,
     )
-    # Two batches of data.
+    # Two batches of data per file. Create 20 files.
+    ch_names = ["G" + str(i + 1) for i in range(64 + 1)]
     fake_data = np.ones((65, int(32 * 2 * 512)))
-    data_loader = DataLoader(
-        data_loader_creation_fn(
-            data_config, data=fake_data, file_sampling_frequency=512
-        ),
-        batch_size=16,
-    )
+    filepaths = []
+    for i in range(20):
+        filepaths.append(
+            create_fake_mne_file_fn(ch_names, fake_data, 512, str(i) + "_raw.fif")
+        )
+    dataloader = create_dataloader(filepaths, data_config, use_cache=False)
 
-    for data in data_loader:
+    for data in dataloader:
         loss, mse, pred, mask, latent, correlations = model_forward(
             model, data, mask_ratio=0.8, alpha=0.25
         )
