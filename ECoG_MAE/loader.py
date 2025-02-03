@@ -31,6 +31,7 @@ class ECoGFileDataset(Dataset):
         self.new_fs = config.new_fs
         self.sample_length = config.sample_length
         self.signal = None
+        self.num_reads = 0
 
         # Load or initialize cache
         if os.path.exists(self.CACHE_FILE) and use_cache:
@@ -66,6 +67,7 @@ class ECoGFileDataset(Dataset):
             raise RuntimeError("Signal not preloaded.")
         elif idx < 0 or idx >= len(self):
             raise ValueError(f"index {idx} not in range [0, {len(self) - 1}]")
+        self.num_reads += 1
 
         # Exclude examples where the sample goes past the end of the signal.
         start_sample = idx * self.sample_length * self.fs
@@ -78,12 +80,20 @@ class ECoGFileDataset(Dataset):
             "-----------------------------------------------------------------------------"
         )
         logger.debug("Reading new file: %s", self.path)
-        print("preload", self.path)
         self.signal = self._load_grid_data()
         return self
 
     def free_data(self):
-        print("free", self.path)
+        logger.debug("Freeing file: %s", self.path)
+        print(
+            "Freeing",
+            self.path,
+            "num reads:",
+            str(self.num_reads),
+            "length:",
+            self.max_samples,
+        )
+        self.num_reads = 0
         del self.signal
         self.signal = None
 
