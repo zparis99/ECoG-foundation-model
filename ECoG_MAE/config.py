@@ -296,6 +296,11 @@ def create_video_mae_experiment_config(args: Namespace | str):
                 if args.test_loader
                 else config.getboolean("ECoGDataConfig", "test_loader")
             ),
+            max_open_files=(
+                args.max_open_files
+                if args.max_open_files
+                else config.getint("ECoGDataConfig", "max_open_files")
+            ),
         ),
         logging_config=LoggingConfig(
             event_log_dir=(

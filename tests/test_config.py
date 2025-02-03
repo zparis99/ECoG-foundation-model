@@ -49,6 +49,7 @@ CONFIG_VALUES = {
         "sample_length": 2,
         "shuffle": False,
         "test_loader": False,
+        "max_open_files": 15,
     },
     "LoggingConfig": {
         "event_log_dir": "test_logging_dir/",
@@ -164,6 +165,7 @@ def test_command_line_args_overwrite_config(mocker, fake_config_path):
         "event_log_dir": "new_dir/",
         "print_freq": 100,
         "plot_dir": "new_plot_dir/",
+        "max_open_files": 90,
     }
 
     # Convert to list which can be passed into sys.argv
@@ -253,6 +255,7 @@ def test_write_config_file(mocker, tmp_path):
             sample_length=4,
             shuffle=True,
             test_loader=True,
+            max_open_files=50,
         ),
         trainer_config=TrainerConfig(max_learning_rate=1e-4, num_epochs=50),
         logging_config=LoggingConfig(

@@ -165,6 +165,11 @@ def arg_parser():
         type=float,
         help="Weight factor for loss computation. Alpha=1 is -correlation loss, alpha = 0 is mse loss.",
     )
+    parser.add_argument(
+        "--max-open-files",
+        type=int,
+        help="The maximum number of files to sample from at once. Limited by RAM.",
+    )
 
     args = parser.parse_args()
 
