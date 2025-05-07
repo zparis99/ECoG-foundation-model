@@ -1,8 +1,5 @@
-import configparser
 from dataclasses import dataclass, fields, field, is_dataclass
 import yaml
-from argparse import Namespace
-from typing import Optional
 
 
 # Config classes here are very roughly following the format of Tensorflow Model Garden: https://www.tensorflow.org/guide/model_garden#training_framework

@@ -14,10 +14,24 @@
 from functools import partial
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from einops import rearrange
 import copy
 from mae_st_util import video_vit
-from metrics import pearson_correlation
+
+
+def pearson_correlation(x1, x2):
+    """Compute pearson correlation between x1 and x2.
+
+    Args:
+        x1 (Tensor): shape [N]
+        x2 (Tensor): shape [N]
+    """
+    return F.cosine_similarity(
+        x1 - x1.mean(),
+        x2 - x2.mean(),
+        dim=0,
+    )
 
 
 class MaskedAutoencoderViT(nn.Module):
