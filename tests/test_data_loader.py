@@ -1,7 +1,8 @@
 import numpy as np
+import torch
 
 from config import ECoGDataConfig
-from loader import BufferedFileRandomSampler, MultiFileECoGDataset, create_dataloader
+from loader import BufferedFileRandomSampler, MultiFileECoGDataset
 
 
 NUM_CHANNELS = 64
@@ -27,6 +28,16 @@ class MockECoGDataset:
 
     def free_data(self):
         self.free_calls += 1
+
+
+def create_dataloader(filepaths, data_config, use_cache=False):
+    dataset = MultiFileECoGDataset(filepaths, data_config, use_cache=use_cache)
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=data_config.batch_size,
+        sampler=BufferedFileRandomSampler(dataset),
+    )
+    return dataloader
 
 
 def create_fake_sin_data():

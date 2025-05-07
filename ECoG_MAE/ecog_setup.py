@@ -5,6 +5,7 @@ import math
 import torch
 import numpy as np
 from accelerate import Accelerator, DeepSpeedPlugin
+from transformers import get_cosine_schedule_with_warmup
 
 import utils
 from config import VideoMAEExperimentConfig
@@ -12,7 +13,7 @@ import constants
 from mae_st_util.models_mae import MaskedAutoencoderViT
 
 
-def system_setup():
+def system_setup(mixed_precision="no"):
     """
     Sets up accelerator, device, datatype precision and local rank
 
@@ -32,8 +33,7 @@ def system_setup():
     seed = 42
     utils.seed_everything(seed)
 
-    # accelerator = Accelerator(split_batches=False, mixed_precision="fp16")
-    accelerator = Accelerator(split_batches=False)
+    accelerator = Accelerator(split_batches=False, mixed_precision=mixed_precision)
 
     device = "cuda:0"
 
@@ -103,7 +103,7 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
                 for n, p in model.named_parameters()
                 if not any(nd in n for nd in no_decay)
             ],
-            "weight_decay": 1e-2,
+            "weight_decay": config.trainer_config.weight_decay,
         },
         {
             "params": [
@@ -116,16 +116,19 @@ def model_setup(config: VideoMAEExperimentConfig, device, num_train_samples):
     ]
 
     optimizer = torch.optim.AdamW(
-        opt_grouped_parameters, lr=config.trainer_config.max_learning_rate
+        opt_grouped_parameters,
+        lr=config.trainer_config.max_learning_rate,
     )
+
+    num_batches = num_train_samples / config.ecog_data_config.batch_size
+    accum_steps = config.trainer_config.gradient_accumulation_steps
+    optimizer_steps_per_epoch = math.ceil(num_batches / accum_steps)
 
     lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=config.trainer_config.max_learning_rate,
         epochs=config.trainer_config.num_epochs,
-        steps_per_epoch=math.ceil(
-            num_train_samples / config.ecog_data_config.batch_size
-        ),
+        steps_per_epoch=optimizer_steps_per_epoch,
     )
 
     print("\nDone with model preparations!")
@@ -159,5 +162,7 @@ def create_model(config: VideoMAEExperimentConfig):
         pred_t_dim=num_frames,
         img_mask=None,
         pct_masks_to_decode=config.video_mae_task_config.pct_masks_to_decode,
+        proj_drop=model_config.proj_drop,
+        drop_path=model_config.drop_path,
     )
     return model

@@ -1,7 +1,8 @@
 import configparser
-from dataclasses import dataclass, field, asdict
-import json
+from dataclasses import dataclass, fields, field, is_dataclass
+import yaml
 from argparse import Namespace
+from typing import Optional
 
 
 # Config classes here are very roughly following the format of Tensorflow Model Garden: https://www.tensorflow.org/guide/model_garden#training_framework
@@ -34,8 +35,6 @@ class ECoGDataConfig:
     shuffle: bool = False
     # The maximum number of files to sample from at once. Limited by RAM.
     max_open_files: int = 10
-    # If True then uses a mock data loader.
-    test_loader: bool = False
 
 
 @dataclass
@@ -44,6 +43,12 @@ class TrainerConfig:
     max_learning_rate: float = 3e-5
     # Number of epochs to train over data.
     num_epochs: int = 10
+    # Weight decay for optimizer.
+    weight_decay: float = 0.0
+    # Mixed precision to use in training. See accelerate.Accelerator for details.
+    mixed_precision: str = "no"
+    # Number of gradient accumulation steps.
+    gradient_accumulation_steps: int = 1
 
 
 @dataclass
@@ -74,6 +79,10 @@ class ViTConfig:
     trunc_init: bool = False
     # If True then don't use a bias for query, key, and values in attention blocks.
     no_qkv_bias: bool = False
+    # Attention projection layer dropout.
+    proj_drop: float = 0.1
+    # Stochastic depth for residual connections.
+    drop_path: float = 0.05
 
 
 @dataclass
@@ -110,252 +119,50 @@ class VideoMAEExperimentConfig:
     logging_config: LoggingConfig = field(default_factory=LoggingConfig)
     # Name of training job. Will be used to save metrics.
     job_name: str = None
+    format_fields: list[str] = None
 
 
-def create_video_mae_experiment_config_from_file(config_file_path):
-    """Convert config file to an experiment config for VideoMAE."""
-
-    # Create fake args which will not error on attribute miss so we can reuse existing function.
-    class FakeArgs:
-        def __init__(self):
-            self.config_file = config_file_path
-
-        def __getattr__(self, item):
-            return None
-
-    return create_video_mae_experiment_config(FakeArgs())
-
-
-def create_video_mae_experiment_config(args: Namespace | str):
-    """Convert command line arguments and config file to an experiment config for VideoMAE.
-
-    Config values can be overridden by command line, otherwise use the config file.
-    Boolean values can only be overriden to True as of now, to set a flag False do so in the config file.
-
-    Can optionally pass
-    """
-    config = configparser.ConfigParser(converters={"list": json.loads})
-    config.read(args.config_file)
-
-    return VideoMAEExperimentConfig(
-        video_mae_task_config=VideoMAETaskConfig(
-            vit_config=ViTConfig(
-                dim=(
-                    args.dim
-                    if args.dim
-                    else config.getint("VideoMAETaskConfig.ViTConfig", "dim")
-                ),
-                decoder_embed_dim=(
-                    args.decoder_embed_dim
-                    if args.decoder_embed_dim
-                    else config.getint(
-                        "VideoMAETaskConfig.ViTConfig", "decoder_embed_dim"
-                    )
-                ),
-                mlp_ratio=(
-                    args.mlp_ratio
-                    if args.mlp_ratio
-                    else config.getfloat("VideoMAETaskConfig.ViTConfig", "mlp_ratio")
-                ),
-                depth=(
-                    args.depth
-                    if args.depth
-                    else config.getint("VideoMAETaskConfig.ViTConfig", "depth")
-                ),
-                decoder_depth=(
-                    args.decoder_depth
-                    if args.decoder_depth
-                    else config.getint("VideoMAETaskConfig.ViTConfig", "decoder_depth")
-                ),
-                num_heads=(
-                    args.num_heads
-                    if args.num_heads
-                    else config.getint("VideoMAETaskConfig.ViTConfig", "num_heads")
-                ),
-                decoder_num_heads=(
-                    args.decoder_num_heads
-                    if args.decoder_num_heads
-                    else config.getint(
-                        "VideoMAETaskConfig.ViTConfig", "decoder_num_heads"
-                    )
-                ),
-                patch_size=(
-                    args.patch_size
-                    if args.patch_size
-                    else config.getint("VideoMAETaskConfig.ViTConfig", "patch_size")
-                ),
-                frame_patch_size=(
-                    args.frame_patch_size
-                    if args.frame_patch_size
-                    else config.getint(
-                        "VideoMAETaskConfig.ViTConfig", "frame_patch_size"
-                    )
-                ),
-                use_cls_token=(
-                    args.use_cls_token
-                    if args.use_cls_token
-                    else config.getboolean(
-                        "VideoMAETaskConfig.ViTConfig", "use_cls_token"
-                    )
-                ),
-                sep_pos_embed=(
-                    args.sep_pos_embed
-                    if args.sep_pos_embed
-                    else config.getboolean(
-                        "VideoMAETaskConfig.ViTConfig", "sep_pos_embed"
-                    )
-                ),
-                trunc_init=(
-                    args.trunc_init
-                    if args.trunc_init
-                    else config.getboolean("VideoMAETaskConfig.ViTConfig", "trunc_init")
-                ),
-                no_qkv_bias=(
-                    args.no_qkv_bias
-                    if args.no_qkv_bias
-                    else config.getboolean(
-                        "VideoMAETaskConfig.ViTConfig", "no_qkv_bias"
-                    )
-                ),
-            ),
-            encoder_mask_ratio=(
-                args.encoder_mask_ratio
-                if args.encoder_mask_ratio
-                else config.getfloat("VideoMAETaskConfig", "encoder_mask_ratio")
-            ),
-            pct_masks_to_decode=(
-                args.pct_masks_to_decode
-                if args.pct_masks_to_decode
-                else config.getfloat("VideoMAETaskConfig", "pct_masks_to_decode")
-            ),
-            alpha=(
-                args.alpha
-                if args.alpha
-                else config.getfloat("VideoMAETaskConfig", "alpha")
-            ),
-        ),
-        trainer_config=TrainerConfig(
-            max_learning_rate=(
-                args.max_learning_rate
-                if args.max_learning_rate
-                else config.getfloat("TrainerConfig", "max_learning_rate")
-            ),
-            num_epochs=(
-                args.num_epochs
-                if args.num_epochs
-                else config.getint("TrainerConfig", "num_epochs")
-            ),
-        ),
-        ecog_data_config=ECoGDataConfig(
-            batch_size=(
-                args.batch_size
-                if args.batch_size
-                else config.getint("ECoGDataConfig", "batch_size")
-            ),
-            data_size=(
-                args.data_size
-                if args.data_size
-                else config.getfloat("ECoGDataConfig", "data_size")
-            ),
-            env=args.env if args.env else config.getboolean("ECoGDataConfig", "env"),
-            bands=(
-                args.bands if args.bands else config.getlist("ECoGDataConfig", "bands")
-            ),
-            original_fs=(
-                args.original_fs
-                if args.original_fs
-                else config.getint("ECoGDataConfig", "original_fs")
-            ),
-            new_fs=(
-                args.new_fs
-                if args.new_fs
-                else config.getint("ECoGDataConfig", "new_fs")
-            ),
-            dataset_path=(
-                args.dataset_path
-                if args.dataset_path
-                else config.get("ECoGDataConfig", "dataset_path")
-            ),
-            train_data_proportion=(
-                args.train_data_proportion
-                if args.train_data_proportion
-                else config.getfloat("ECoGDataConfig", "train_data_proportion")
-            ),
-            sample_length=(
-                args.sample_length
-                if args.sample_length
-                else config.getint("ECoGDataConfig", "sample_length")
-            ),
-            shuffle=(
-                args.shuffle
-                if args.shuffle
-                else config.getboolean("ECoGDataConfig", "shuffle")
-            ),
-            test_loader=(
-                args.test_loader
-                if args.test_loader
-                else config.getboolean("ECoGDataConfig", "test_loader")
-            ),
-            max_open_files=(
-                args.max_open_files
-                if args.max_open_files
-                else config.getint("ECoGDataConfig", "max_open_files")
-            ),
-        ),
-        logging_config=LoggingConfig(
-            event_log_dir=(
-                args.event_log_dir
-                if args.event_log_dir
-                else config.get("LoggingConfig", "event_log_dir")
-            ),
-            plot_dir=(
-                args.plot_dir
-                if args.plot_dir
-                else config.get("LoggingConfig", "plot_dir")
-            ),
-            print_freq=(
-                args.print_freq
-                if args.print_freq
-                else config.getint("LoggingConfig", "print_freq")
-            ),
-        ),
-        job_name=(
-            args.job_name
-            if args.job_name
-            else config.get("JobDetails", "job_name", fallback="train-job")
-        ),
-    )
+# Utility function to recursively convert dicts to dataclass instances
+def dict_to_config(d: dict, config_class):
+    """Recursively convert a dict d to an instance of config_class."""
+    init_kwargs = {}
+    for field_info in fields(config_class):
+        field_name = field_info.name
+        field_type = field_info.type
+        if field_name not in d:
+            continue
+        field_value = d[field_name]
+        if is_dataclass(field_type) and isinstance(field_value, dict):
+            init_kwargs[field_name] = dict_to_config(field_value, field_type)
+        else:
+            init_kwargs[field_name] = field_value
+    return config_class(**init_kwargs)
 
 
-def write_config_file(path: str, experiment_config: VideoMAEExperimentConfig):
-    """Writes config to path as a .ini file.
+# Load YAML config into nested dataclass
 
-    Args:
-        path (str): path to write file to.
-        experiment_config (VideoMAEExperimentConfig): Config to write in .ini format.
-    """
-    config = configparser.ConfigParser()
 
-    def add_section(section_name, data):
-        config[section_name] = {}
-        for key, value in data.items():
-            config[section_name][key] = str(value)
+def create_video_mae_experiment_config_from_yaml(
+    yaml_file_path: str,
+) -> VideoMAEExperimentConfig:
+    with open(yaml_file_path, "r") as f:
+        config_dict = yaml.safe_load(f)
+    return dict_to_config(config_dict, VideoMAEExperimentConfig)
 
-    add_section(
-        "VideoMAETaskConfig.ViTConfig",
-        asdict(experiment_config.video_mae_task_config.vit_config),
-    )
-    video_mae_task_config = {
-        k: v
-        for k, v in asdict(experiment_config.video_mae_task_config).items()
-        if k != "vit_config"
-    }
-    add_section("VideoMAETaskConfig", video_mae_task_config)
-    add_section("ECoGDataConfig", asdict(experiment_config.ecog_data_config))
-    add_section("LoggingConfig", asdict(experiment_config.logging_config))
-    add_section("TrainerConfig", asdict(experiment_config.trainer_config))
-    config["JobDetails"] = {"job_name": experiment_config.job_name}
 
-    # Write the configuration to the file
-    with open(path, "w") as configfile:
-        config.write(configfile)
+# Write the config to YAML
+def write_config_file_to_yaml(path: str, experiment_config: VideoMAEExperimentConfig):
+    def dataclass_to_dict(obj):
+        if hasattr(obj, "__dataclass_fields"):
+            return {
+                key: dataclass_to_dict(value) for key, value in obj.__dict__.items()
+            }
+        elif isinstance(obj, list):
+            return [dataclass_to_dict(item) for item in obj]
+        else:
+            return obj
+
+    config_dict = dataclass_to_dict(experiment_config)
+
+    with open(path, "w") as f:
+        yaml.dump(config_dict, f, sort_keys=False)

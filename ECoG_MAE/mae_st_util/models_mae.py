@@ -700,7 +700,7 @@ class MaskedAutoencoderViT(nn.Module):
         mse = (mse * mask).sum() / mask.sum()  # mean loss on removed patches
 
         # Loss is weighted sum of mse and correlation
-        loss = alpha * (-correlation) + (1 - alpha) * mse
+        loss = alpha * (1 - correlation) / 2 + (1 - alpha) * mse
 
         return loss, mse, correlation
 

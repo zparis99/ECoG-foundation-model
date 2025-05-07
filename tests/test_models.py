@@ -6,12 +6,21 @@ import constants
 from config import ECoGDataConfig
 from mae_st_util.models_mae import MaskedAutoencoderViT
 from pretrain_engine import model_forward
-from loader import create_dataloader
+from loader import BufferedFileRandomSampler, MultiFileECoGDataset
 
 EMBEDDING_DIM = 64
 FRAMES_PER_SAMPLE = 40
 NUM_BANDS = 5
 FRAME_PATCH_SIZE = 4
+
+def create_dataloader(filepaths, data_config, use_cache=False):
+    dataset = MultiFileECoGDataset(filepaths, data_config, use_cache=use_cache)
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=data_config.batch_size,
+        sampler=BufferedFileRandomSampler(dataset),
+    )
+    return dataloader
 
 
 @pytest.fixture

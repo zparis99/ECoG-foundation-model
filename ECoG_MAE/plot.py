@@ -15,8 +15,8 @@ def scale_signal_minmax(signal, reference):
     Scale a signal to match the min/max range of a reference signal.
     """
 
-    signal_min, signal_max = signal.nanmin(), signal.nanmax()
-    ref_min, ref_max = reference.nanmin(), reference.nanmax()
+    signal_min, signal_max = np.nanmin(signal), np.nanmax(signal)
+    ref_min, ref_max = np.nanmin(reference), np.nanmax(reference)
 
     if signal_max == signal_min:
         return signal
@@ -70,7 +70,7 @@ def plot_multi_band_reconstruction(
     reconstructed_signal : np.ndarray
         Reconstructed signal of shape [batch_size, num_bands, time_steps * (pred_t_dim / frame_patch_size), height, width]
     pred_t_dim : int
-        Number of temporal outputs per patch
+        Number of temporal outputs in prediction
     batch_idx : int
         Index of the batch to plot
     height_idx : int
@@ -192,7 +192,7 @@ def save_reconstruction_plot(
     epoch,
     output_dir,
     log_writer=None,
-    t_patch_size=4,
+    pred_t_dim=4,
     batch_idx=0,
     height_idx=0,
     width_idx=0,
@@ -214,8 +214,8 @@ def save_reconstruction_plot(
         Directory to save plot files
     writer : torch.utils.tensorboard.SummaryWriter, optional
         TensorBoard writer for logging plots
-    t_patch_size : int
-        Number of frames in each temporal patch
+    pred_t_dim : int
+        Number of predictions for each sample.
     batch_idx : int
         Index of the batch to visualize
     height_idx : int
@@ -234,7 +234,7 @@ def save_reconstruction_plot(
     fig = plot_multi_band_reconstruction(
         original_signal,
         reconstructed_signal,
-        t_patch_size=t_patch_size,
+        pred_t_dim=pred_t_dim,
         batch_idx=batch_idx,
         height_idx=height_idx,
         width_idx=width_idx,

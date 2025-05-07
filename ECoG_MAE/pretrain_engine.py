@@ -53,11 +53,17 @@ def train_single_epoch(
     )
     header = "Epoch: [{}]".format(epoch)
 
+    accumulation_steps = config.trainer_config.gradient_accumulation_steps
+
+    accumulated_loss = 0.0
+    accumulated_mse = 0.0
+    accumulated_correlation = 0.0
+    accumulated_count = 0
+
+    optimizer.zero_grad()
     for train_i, batch in enumerate(
         metric_logger.log_every(train_dl, config.logging_config.print_freq, header)
     ):
-        optimizer.zero_grad()
-
         signal = batch.to(device)
 
         padding_mask = get_padding_mask(signal, device)
@@ -76,35 +82,45 @@ def train_single_epoch(
             logger.error(
                 f"Got nan loss for index {train_i}. Ignoring and continuing..."
             )
-            continue
+            raise RuntimeError("Nan loss")
 
+        loss = loss / accumulation_steps  # Normalize loss
         accelerator.backward(loss)
-        optimizer.step()
-        lr_scheduler.step()
+        accumulated_loss += loss.item() * accumulation_steps  # unscale
+        accumulated_mse += mse.item()
+        accumulated_correlation += correlation.item()
+        accumulated_count += 1
 
-        loss_value = loss.item()
-        mse_value = mse.item()
-        correlation_value = correlation.item()
+        if (train_i + 1) % accumulation_steps == 0 or (train_i + 1) == len(train_dl):
+            optimizer.step()
+            lr_scheduler.step()
+            optimizer.zero_grad()
 
-        metric_logger.update(loss=loss_value)
-        metric_logger.update(mse=mse_value)
-        metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
-        metric_logger.update(cpu_mem_all=misc.cpu_mem_usage()[1])
-        metric_logger.update(gpu_mem=misc.gpu_mem_usage())
-        metric_logger.update(correlation=correlation_value)
+            # Only log when gradients are updated
+            avg_loss = accumulated_loss / accumulated_count
+            avg_mse = accumulated_mse / accumulated_count
+            avg_correlation = accumulated_correlation / accumulated_count
 
-        lr = optimizer.param_groups[0]["lr"]
-        metric_logger.update(lr=lr)
+            metric_logger.update(loss=avg_loss)
+            metric_logger.update(mse=avg_mse)
+            metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
+            metric_logger.update(cpu_mem_all=misc.cpu_mem_usage()[1])
+            metric_logger.update(gpu_mem=misc.gpu_mem_usage())
+            metric_logger.update(correlation=avg_correlation)
+            metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
-        if log_writer is not None:
-            """We use epoch_1000x as the x-axis in tensorboard.
-            This calibrates different curves when batch size changes.
-            """
-            epoch_1000x = int((train_i / len(train_dl) + epoch) * 1000)
-            log_writer.add_scalar("loss/train", loss_value, epoch_1000x)
-            log_writer.add_scalar("lr", lr, epoch_1000x)
-            log_writer.add_scalar("mse/train", mse_value, epoch_1000x)
-            log_writer.add_scalar("correlation/train", correlation_value, epoch_1000x)
+            if log_writer is not None:
+                step = int((train_i / len(train_dl) + epoch) * 1000)
+                log_writer.add_scalar("loss/train", avg_loss, step)
+                log_writer.add_scalar("lr", optimizer.param_groups[0]["lr"], step)
+                log_writer.add_scalar("mse/train", avg_mse, step)
+                log_writer.add_scalar("correlation/train", avg_correlation, step)
+
+            # Reset accumulators
+            accumulated_loss = 0.0
+            accumulated_mse = 0.0
+            accumulated_correlation = 0.0
+            accumulated_count = 0
 
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -151,18 +167,10 @@ def test_single_epoch(
                 signal_np = signal.detach().cpu().numpy()
 
                 pred_signal = model.unpatchify(pred)
-                pred_signal_np = pred_signal.detach().cpu().numpy()
+                pred_signal_np = pred_signal.to(torch.float32).detach().cpu().numpy()
 
                 plot_path = os.path.join(
                     config.logging_config.plot_dir, config.job_name
-                )
-                save_reconstruction_plot(
-                    signal_np,
-                    pred_signal_np,
-                    epoch,
-                    plot_path,
-                    log_writer=log_writer,
-                    t_patch_size=config.video_mae_task_config.vit_config.frame_patch_size,
                 )
 
                 # Save a reconstruction plot for scaled signal as well.
@@ -172,7 +180,7 @@ def test_single_epoch(
                     epoch,
                     plot_path,
                     log_writer=log_writer,
-                    t_patch_size=config.video_mae_task_config.vit_config.frame_patch_size,
+                    pred_t_dim=model.pred_t_dim,
                     tag="signal_reconstruction_scaled",
                     scale_output=True,
                 )
@@ -195,3 +203,5 @@ def test_single_epoch(
             log_writer.add_scalar("mse/test", mse_mean, epoch_1000x)
             # Write overall correlation, individual channels, and bands.
             log_writer.add_scalar("correlation/test", correlation_mean, epoch_1000x)
+
+    return loss_mean, mse_mean, correlation_mean

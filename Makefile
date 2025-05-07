@@ -13,7 +13,7 @@ download-data:
 PREFIX = "video-mae-train"
 JOB_NAME = "$(PREFIX)-$(USR)-$(DT)"
 
-CONFIG_FILE = "configs/video_mae_train.ini"
+CONFIG_FILE = "configs/video_mae_train.yml"
 
 CMD = sbatch --job-name=$(JOB_NAME) submit.sh
 # to debug, request interactive gpu node via salloc and select this option:
@@ -31,5 +31,4 @@ CMD = sbatch --job-name=$(JOB_NAME) submit.sh
 model-train:
 	mkdir -p logs
 	$(CMD) ECoG_MAE/main.py \
-		--job-name $(JOB_NAME) \
 		--config-file $(CONFIG_FILE);

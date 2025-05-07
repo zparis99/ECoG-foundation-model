@@ -2,9 +2,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=4G
+#SBATCH --mem-per-cpu=32G
 #SBATCH --gres=gpu:1
-#SBATCH --time=15:00:00
+#SBATCH --time=09:00:00
 #SBATCH -o './logs/%x.out'
 #SBATCH -e './logs/%x.err'
 

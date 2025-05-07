@@ -133,7 +133,10 @@ def preprocess_neural_data(
         filtered_signal = np.expand_dims(signal, axis=0)
 
     if fs != new_fs:
-        resampled = resample_mean_signals(filtered_signal, fs, new_fs)
+        window_width = fs // new_fs
+        resampled = filtered_signal.reshape(
+            filtered_signal.shape[0], filtered_signal.shape[1], -1, window_width
+        ).mean(-1)
     else:
         resampled = filtered_signal
     # rearrange into shape c*t*d*h*w, where
@@ -170,43 +173,6 @@ def preprocess_neural_data(
             preprocessed_signal = np.concatenate((preprocessed_signal, padding), axis=1)
 
     return preprocessed_signal
-
-
-def resample_mean_signals(signal: np.array, old_fs: int, new_fs: int) -> np.array:
-    """Resample signal with sampling rate of old_fs Hz to new_fs Hz by taking means over windows of data.
-
-    Args:
-        signal (np.array): shape [bands, num_electrodes, samples]
-        old_fs (int): Old sample rate in Hz.
-        new_fs (int): Sample rate to resample to in Hz.
-
-    Returns:
-        np.array: Resampled signal with the new sample rate.
-    """
-    window_width = old_fs / new_fs
-    num_samples = signal.shape[2]
-    # TODO: revisit using ceil here. By using ceil our final entry in our new array may be averaged
-    # over fewer samples then the previous entries.
-    num_new_samples = int(np.ceil(num_samples * new_fs / old_fs))
-
-    resampled_signal = np.zeros((signal.shape[0], signal.shape[1], num_new_samples))
-
-    # Current index needs to be a float to handle cases where old_fs and new_fs are not divisible.
-    # Flooring results only after summing window widths ensures all of the data is included in the
-    # averages.
-    current_idx = 0.0
-    for i in range(num_new_samples):
-        start_idx = int(np.floor(current_idx))
-        end_idx = int(np.floor(current_idx + window_width))
-
-        if end_idx > start_idx:  # Ensure there is a range to average over
-            resampled_signal[:, :, i] = np.mean(signal[:, :, start_idx:end_idx], axis=2)
-        else:  # If the window size rounds to 0, just take the value at start_idx
-            resampled_signal[:, :, i] = signal[:, :, start_idx]
-
-        current_idx += window_width
-
-    return resampled_signal
 
 
 def get_signal_stats(signal: np.array) -> tuple[np.array, np.array]:

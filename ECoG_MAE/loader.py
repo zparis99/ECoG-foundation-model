@@ -8,7 +8,7 @@ import mne
 from mne_bids import BIDSPath
 from pyedflib import highlevel
 import torch
-from torch.utils.data import Dataset, Sampler
+from torch.utils.data import Dataset, Sampler, IterableDataset
 import logging
 import json
 from typing import Optional
@@ -85,12 +85,10 @@ class ECoGFileDataset(Dataset):
 
     def free_data(self):
         logger.debug("Freeing file: %s", self.path)
-        print(
-            "Freeing",
+        logger.debug(
+            "Freeing %s, num reads: %d, length: %d",
             self.path,
-            "num reads:",
-            str(self.num_reads),
-            "length:",
+            self.num_reads,
             self.max_samples,
         )
         self.num_reads = 0
@@ -156,6 +154,91 @@ class ECoGFileDataset(Dataset):
 
         return sig
 
+
+class SequentialMultiFileECoGDataset(IterableDataset):
+    def __init__(
+        self,
+        filepaths,
+        config: ECoGDataConfig,
+        file_dataset=ECoGFileDataset,
+        use_cache: bool = True,
+        load_on_init: bool = False,
+    ):
+        super().__init__()
+        self.filepaths = filepaths
+        self.config = config
+        self.use_cache = use_cache
+        
+        # Create file datasets for each filepath
+        self.file_datasets = []
+        for path in self.filepaths:
+            dataset = file_dataset(path, config, use_cache)
+            self.file_datasets.append(dataset)
+            
+        # Calculate total number of samples across all files
+        self.total_samples = sum(len(dataset) for dataset in self.file_datasets)
+        
+        # Track current file and sample index
+        self.current_file_idx = 0
+        self.current_dataset = None
+        
+        if load_on_init:
+            self._preload_current_file()
+    
+    def _preload_current_file(self):
+        """Preload the current file dataset."""
+        if self.current_dataset is not None:
+            self.current_dataset.free_data()
+            
+        if self.current_file_idx < len(self.file_datasets):
+            self.current_dataset = self.file_datasets[self.current_file_idx].preload_data()
+            logger.debug(f"Preloaded file {self.current_file_idx}: {self.filepaths[self.current_file_idx]}")
+    
+    def __iter__(self):
+        # Start with the first file
+        self.current_file_idx = 0
+        self.current_sample_idx = 0
+        
+        # Preload the first file
+        self._preload_current_file()
+        
+        return self
+    
+    def __next__(self):
+        # If we've gone through all files, raise StopIteration
+        if self.current_file_idx >= len(self.file_datasets):
+            raise StopIteration
+            
+        # Get the current dataset
+        dataset = self.current_dataset
+        
+        # If we've gone through all samples in the current file
+        if self.current_sample_idx >= len(dataset):
+            # Free the current dataset
+            dataset.free_data()
+            
+            # Move to the next file
+            self.current_file_idx += 1
+            self.current_sample_idx = 0
+            
+            # If we've gone through all files, raise StopIteration
+            if self.current_file_idx >= len(self.file_datasets):
+                raise StopIteration
+                
+            # Preload the next file
+            self._preload_current_file()
+            dataset = self.current_dataset
+        
+        # Get the sample from the current dataset
+        sample = dataset[self.current_sample_idx]
+        
+        # Increment the sample index
+        self.current_sample_idx += 1
+        
+        return sample
+    
+    def __len__(self):
+        return self.total_samples
 
 class MultiFileECoGDataset(Dataset):
 
@@ -280,6 +363,9 @@ class BufferedFileRandomSampler(Sampler):
 
             yield (dataset_idx, sample_idx)
 
+    def __len__(self):
+        return len(self.dataset)
+
 
 def split_dataframe(shuffle: bool, df: pd.DataFrame, ratio: float):
     """
@@ -374,20 +460,9 @@ def get_dataset_path_info(
     return split_filepaths, num_samples, pd.DataFrame(sample_desc)
 
 
-def create_dataloader(
-    filepaths: list[str], ecog_data_config: ECoGDataConfig, use_cache=True
-):
-    dataset = MultiFileECoGDataset(filepaths, ecog_data_config, use_cache=use_cache)
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=ecog_data_config.batch_size,
-        sampler=BufferedFileRandomSampler(dataset),
-    )
-    return dataloader
 
-
-def _create_dataloader_from_df(
-    root: str, data_files_df: pd.DataFrame, ecog_data_config: ECoGDataConfig
+def _create_train_dataloader_from_df(
+    root: str, data_files_df: pd.DataFrame, ecog_data_config: ECoGDataConfig, use_cache=True
 ) -> tuple[torch.utils.data.DataLoader, int, pd.DataFrame]:
     """Given a dataframe containing the BIDS data info in a dataset and the data config, create a dataloader and associated information.
 
@@ -402,7 +477,36 @@ def _create_dataloader_from_df(
     filepaths, num_samples, sample_desc = get_dataset_path_info(
         ecog_data_config.sample_length, root, data_files_df
     )
-    dataloader = create_dataloader(filepaths, ecog_data_config)
+    dataset = MultiFileECoGDataset(filepaths, ecog_data_config, use_cache=use_cache)
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=ecog_data_config.batch_size,
+        sampler=BufferedFileRandomSampler(dataset),
+    )
+
+    return dataloader, num_samples, sample_desc
+
+
+def create_test_dataloader_from_df(root: str, data_files_df: pd.DataFrame, ecog_data_config: ECoGDataConfig, use_cache=True
+) -> tuple[torch.utils.data.DataLoader, int, pd.DataFrame]:
+    """Given a dataframe containing the BIDS data info in a dataset and the data config, create a dataloader and associated information.
+
+    Args:
+        data_files_df (pd.DataFrame): Has columns subject, task, and chunk for finding desired data in BIDS format.
+        ecog_data_config (ECoGDataConfig): Configuration for how to preprocess data.
+
+    Returns:
+        tuple[torch.utils.data.DataLoader, int, pd.DataFrame]: [Dataloader for data, number of samples in dataloader, descriptions of how many samples are in each file]
+    """
+    # load and concatenate data for train split
+    filepaths, num_samples, sample_desc = get_dataset_path_info(
+        ecog_data_config.sample_length, root, data_files_df
+    )
+    dataset = SequentialMultiFileECoGDataset(filepaths, ecog_data_config, use_cache=use_cache)
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=ecog_data_config.batch_size,
+    )
 
     return dataloader, num_samples, sample_desc
 
@@ -435,10 +539,10 @@ def dl_setup(
         config.ecog_data_config.train_data_proportion,
     )
 
-    train_dl, num_train_samples, train_samples_desc = _create_dataloader_from_df(
+    train_dl, num_train_samples, train_samples_desc = _create_train_dataloader_from_df(
         root, train_data, config.ecog_data_config
     )
-    test_dl, _, test_samples_desc = _create_dataloader_from_df(
+    test_dl, _, test_samples_desc = create_test_dataloader_from_df(
         root, test_data, config.ecog_data_config
     )
 

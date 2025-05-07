@@ -15,7 +15,7 @@ def get_padding_mask(signal, device):
         padding_mask: boolean tensor of same shape as image indicating which parts of the signal are padded
 
     """
-    return (~torch.isnan(signal)).all((0, 1, 2)).to(device)
+    return (~torch.isnan(signal)).all(0).all(0).all(0).to(device)
 
 
 def get_tube_mask(tube_mask_ratio, height, width, padding_mask, device):
