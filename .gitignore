@@ -2,6 +2,9 @@ __pycache__
 
 .DS_Store
 
+build/
+ecog_foundation_model.egg-info/
+
 ecog
 cache
 checkpoints
