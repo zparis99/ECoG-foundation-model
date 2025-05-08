@@ -1,5 +1,6 @@
 import torch
 import subprocess
+from importlib.metadata import version, PackageNotFoundError
 
 from ecog_foundation_model.config import VideoMAEExperimentConfig
 import ecog_foundation_model.constants
@@ -67,68 +68,82 @@ def get_git_info():
         return {"commit": "unknown", "branch": "unknown", "tag": None}
 
 
+def get_ecog_model_version():
+    try:
+        return version("ecog_foundation_model")
+    except PackageNotFoundError:
+        return "unknown"
+
+
 class CheckpointManager:
-    def __init__(self, model: MaskedAutoencoderViT, optimizer=None, config=None):
+    def __init__(self, model, optimizer=None, config=None):
         self.model = model
         self.optimizer = optimizer
         self.config = config
 
-    def save(self, path):
+    def save(self, path, tags=None):
         # Remove any left over image masks before saving.
         self.model.initialize_mask(None)
         checkpoint = {
             "model_state_dict": self.model.state_dict(),
-            "git_info": get_git_info(),
+            "ecog_model_version": get_ecog_model_version(),
         }
+
         if self.optimizer:
             checkpoint["optimizer_state_dict"] = self.optimizer.state_dict()
         if self.config:
             checkpoint["model_config"] = self.config.__dict__
+        if tags:
+            checkpoint["tags"] = tags
 
         torch.save(checkpoint, path)
-        logger.debug(f"[CheckpointManager] Saved to {path}")
+        logger.debug(f"[CheckpointManager] ✔ Saved to {path}")
+        if tags:
+            logger.debug(f"[CheckpointManager] 🏷 Tags: {tags}")
 
-    def load(self, path, strict=True, validate_git=True):
+    def load(self, path, strict=True, required_tags=None):
         checkpoint = torch.load(path, map_location="cpu")
-        self.model.load_state_dict(checkpoint["model_state_dict"])
 
+        # 1. Load model weights
+        self.model.load_state_dict(checkpoint["model_state_dict"], strict=strict)
+
+        # 2. Optimizer (optional)
         if self.optimizer and "optimizer_state_dict" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
-        if validate_git and "git_info" in checkpoint:
-            self._validate_git_info(checkpoint["git_info"], strict)
+        # 3. Version check
+        saved_version = checkpoint.get("ecog_model_version", "unknown")
+        current_version = get_ecog_model_version()
+        if saved_version != current_version:
+            msg = (
+                f"[CheckpointManager] ❗ Version mismatch: "
+                f"checkpoint={saved_version}, installed={current_version}"
+            )
+            if strict:
+                raise RuntimeError(msg)
+            else:
+                logger.warning(msg)
+
+        # 4. User tag check
+        checkpoint_tags = checkpoint.get("tags", {})
+        if required_tags:
+            mismatches = []
+            for key, expected in required_tags.items():
+                actual = checkpoint_tags.get(key, None)
+                if actual != expected:
+                    mismatches.append(f"{key}: expected {expected}, got {actual}")
+            if mismatches:
+                msg = f"[CheckpointManager] ❗ Tag mismatch:\n  " + "\n  ".join(
+                    mismatches
+                )
+                if strict:
+                    raise RuntimeError(msg)
+                else:
+                    logger.warning(msg)
+
+        # 5. Log what we loaded
+        logger.debug(f"[CheckpointManager] 🔍 ecog_model_version: {saved_version}")
+        if checkpoint_tags:
+            logger.debug(f"[CheckpointManager] 🏷 Loaded tags: {checkpoint_tags}")
 
         return checkpoint
-
-    def _validate_git_info(self, saved_info, strict):
-        current = get_git_info()
-
-        warnings = []
-        non_strict_warnings = []
-        if saved_info["commit"] != current["commit"]:
-            warnings.append(
-                f"Commit mismatch: {saved_info['commit']} vs {current['commit']}"
-            )
-        if saved_info["tag"] and saved_info["tag"] != current["tag"]:
-            warnings.append(f"Tag mismatch: {saved_info['tag']} vs {current['tag']}")
-
-        # Non strict warnings will not crash on strict.
-        if saved_info["branch"] != current["branch"]:
-            non_strict_warnings.append(
-                f"Branch mismatch: {saved_info['branch']} vs {current['branch']}"
-            )
-
-        if warnings:
-            logger.warning("[CheckpointManager] ⚠️ Git mismatch detected:")
-            for w in warnings:
-                logger.warning("  •", w)
-            if strict:
-                raise RuntimeError(
-                    "Git metadata mismatch — checkpoint may be incompatible."
-                )
-        if non_strict_warnings:
-            logger.warning("[CheckpointManager] ⚠️ Non-crucial Git mismatch detected:")
-            for w in non_strict_warnings:
-                logger.warning("  •", w)
-        else:
-            logger.debug("[CheckpointManager] ✅ Git version matches checkpoint.")
