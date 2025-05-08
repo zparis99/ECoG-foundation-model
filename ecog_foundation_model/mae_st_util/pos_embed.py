@@ -7,7 +7,7 @@
 # Position embedding utils
 # --------------------------------------------------------
 
-import mae_st_util.logging as logging
+import ecog_foundation_model.mae_st_util.logging as logging
 import numpy as np
 import torch
 

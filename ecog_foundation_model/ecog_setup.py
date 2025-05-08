@@ -1,10 +1,10 @@
 import torch
 import subprocess
 
-from config import VideoMAEExperimentConfig
-import constants
-from mae_st_util.models_mae import MaskedAutoencoderViT
-import mae_st_util.logging as logging
+from ecog_foundation_model.config import VideoMAEExperimentConfig
+import ecog_foundation_model.constants
+from ecog_foundation_model.mae_st_util.models_mae import MaskedAutoencoderViT
+import ecog_foundation_model.mae_st_util.logging as logging
 
 logger = logging.get_logger(__name__)
 
@@ -15,7 +15,7 @@ def create_model(config: VideoMAEExperimentConfig):
         config.ecog_data_config.sample_length * config.ecog_data_config.new_fs
     )
     model = MaskedAutoencoderViT(
-        img_size=constants.GRID_SIZE,
+        img_size=ecog_foundation_model.constants.GRID_SIZE,
         patch_size=model_config.patch_size,
         in_chans=len(config.ecog_data_config.bands),
         embed_dim=model_config.dim,

@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 import copy
-from mae_st_util import video_vit
+from ecog_foundation_model.mae_st_util import video_vit
 
 
 def pearson_correlation(x1, x2):

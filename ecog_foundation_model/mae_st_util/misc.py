@@ -18,7 +18,7 @@ import psutil
 import mae_st_util.logging as logging
 import torch
 import torch.distributed as dist
-from mae_st_util.logging import master_print as print
+from ecog_foundation_model.mae_st_util.logging import master_print as print
 
 
 logger = logging.get_logger(__name__)
@@ -90,7 +90,7 @@ class SmoothedValue:
     def __str__(self):
         if self.count == 0:
             return "empty metric"
-        
+
         return self.fmt.format(
             median=self.median,
             avg=self.avg,
@@ -197,7 +197,7 @@ class MetricLogger:
                 header, total_time_str, total_time / len(iterable)
             )
         )
-        
+
 
 def cpu_mem_usage():
     """
@@ -222,8 +222,8 @@ def gpu_mem_usage():
     else:
         mem_usage_bytes = 0
     return mem_usage_bytes / 1024**3
-        
-        
+
+
 def is_dist_avail_and_initialized():
     if not dist.is_available():
         return False
