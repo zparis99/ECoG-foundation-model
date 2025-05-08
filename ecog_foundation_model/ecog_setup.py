@@ -11,10 +11,6 @@ logger = logging.get_logger(__name__)
 
 
 def create_model(config: VideoMAEExperimentConfig):
-    temp_img_mask = torch.ones(8, 8)
-    temp_img_mask[0][0] = 0
-    temp_img_mask[0][1] = 0
-    temp_img_mask[0][2] = 0
     model_config = config.video_mae_task_config.vit_config
     num_frames = int(
         config.ecog_data_config.sample_length * config.ecog_data_config.new_fs
@@ -38,11 +34,10 @@ def create_model(config: VideoMAEExperimentConfig):
         cls_embed=model_config.use_cls_token,
         # TODO: Make this configurable.
         pred_t_dim=num_frames,
-        # img_mask=None,
+        img_mask=None,
         pct_masks_to_decode=config.video_mae_task_config.pct_masks_to_decode,
         proj_drop=model_config.proj_drop,
         drop_path=model_config.drop_path,
-        img_mask=temp_img_mask,
     )
     return model
 
