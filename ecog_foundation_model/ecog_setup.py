@@ -1,6 +1,12 @@
+import torch
+import subprocess
+
 from config import VideoMAEExperimentConfig
 import constants
 from mae_st_util.models_mae import MaskedAutoencoderViT
+import mae_st_util.logging as logging
+
+logger = logging.get_logger(__name__)
 
 
 def create_model(config: VideoMAEExperimentConfig):
@@ -33,3 +39,89 @@ def create_model(config: VideoMAEExperimentConfig):
         drop_path=model_config.drop_path,
     )
     return model
+
+
+def get_git_info():
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+        branch = (
+            subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+            .decode()
+            .strip()
+        )
+        try:
+            tag = (
+                subprocess.check_output(["git", "describe", "--exact-match", "--tags"])
+                .decode()
+                .strip()
+            )
+        except subprocess.CalledProcessError:
+            tag = None
+        return {"commit": commit, "branch": branch, "tag": tag}
+    except Exception:
+        return {"commit": "unknown", "branch": "unknown", "tag": None}
+
+
+class CheckpointManager:
+    def __init__(self, model, optimizer=None, config=None):
+        self.model = model
+        self.optimizer = optimizer
+        self.config = config
+
+    def save(self, path):
+        checkpoint = {
+            "model_state_dict": self.model.state_dict(),
+            "git_info": get_git_info(),
+        }
+        if self.optimizer:
+            checkpoint["optimizer_state_dict"] = self.optimizer.state_dict()
+        if self.config:
+            checkpoint["model_config"] = self.config.__dict__
+
+        torch.save(checkpoint, path)
+        logger.debug(f"[CheckpointManager] Saved to {path}")
+
+    def load(self, path, strict=True, validate_git=True):
+        checkpoint = torch.load(path, map_location="cpu")
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+
+        if self.optimizer and "optimizer_state_dict" in checkpoint:
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+        if validate_git and "git_info" in checkpoint:
+            self._validate_git_info(checkpoint["git_info"], strict)
+
+        return checkpoint
+
+    def _validate_git_info(self, saved_info, strict):
+        current = get_git_info()
+
+        warnings = []
+        non_strict_warnings = []
+        if saved_info["commit"] != current["commit"]:
+            warnings.append(
+                f"Commit mismatch: {saved_info['commit']} vs {current['commit']}"
+            )
+        if saved_info["tag"] and saved_info["tag"] != current["tag"]:
+            warnings.append(f"Tag mismatch: {saved_info['tag']} vs {current['tag']}")
+
+        # Non strict warnings will not crash on strict.
+        if saved_info["branch"] != current["branch"]:
+            non_strict_warnings.append(
+                f"Branch mismatch: {saved_info['branch']} vs {current['branch']}"
+            )
+
+        if warnings:
+            logger.warning("[CheckpointManager] ⚠️ Git mismatch detected:")
+            for w in warnings:
+                logger.warning("  •", w)
+            if strict:
+                raise RuntimeError(
+                    "Git metadata mismatch — checkpoint may be incompatible."
+                )
+        if non_strict_warnings:
+            logger.warning("[CheckpointManager] ⚠️ Non-crucial Git mismatch detected:")
+            for w in non_strict_warnings:
+                logger.warning("  •", w)
+        else:
+            logger.debug("[CheckpointManager] ✅ Git version matches checkpoint.")
