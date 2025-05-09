@@ -3,7 +3,7 @@ import scipy
 from einops import rearrange
 from typing import Optional
 
-import constants
+from ecog_foundation_model import constants
 
 
 # TODO: Test this function.

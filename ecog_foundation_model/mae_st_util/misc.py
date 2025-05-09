@@ -15,7 +15,7 @@ import time
 from collections import defaultdict, deque
 
 import psutil
-import mae_st_util.logging as logging
+import ecog_foundation_model.mae_st_util.logging as logging
 import torch
 import torch.distributed as dist
 from ecog_foundation_model.mae_st_util.logging import master_print as print
