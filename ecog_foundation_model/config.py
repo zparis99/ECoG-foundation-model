@@ -1,4 +1,4 @@
-from dataclasses import dataclass, fields, field, is_dataclass
+from dataclasses import dataclass, fields, field, is_dataclass, asdict
 import yaml
 
 
@@ -148,18 +148,18 @@ def create_video_mae_experiment_config_from_yaml(
 
 
 # Write the config to YAML
-def write_config_file_to_yaml(path: str, experiment_config: VideoMAEExperimentConfig):
+def write_config_file_to_yaml(path: str, experiment_config):
     def dataclass_to_dict(obj):
-        if hasattr(obj, "__dataclass_fields"):
-            return {
-                key: dataclass_to_dict(value) for key, value in obj.__dict__.items()
-            }
+        if is_dataclass(obj) and not isinstance(obj, type):
+            return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
         elif isinstance(obj, list):
             return [dataclass_to_dict(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {key: dataclass_to_dict(value) for key, value in obj.items()}
         else:
             return obj
 
     config_dict = dataclass_to_dict(experiment_config)
 
     with open(path, "w") as f:
-        yaml.dump(config_dict, f, sort_keys=False)
+        yaml.safe_dump(config_dict, f, sort_keys=False)
