@@ -1,5 +1,8 @@
 from dataclasses import dataclass, fields, field, is_dataclass, asdict
 import yaml
+from typing import Optional
+
+# TODO: reduce this file to just the necessary pieces for all use-cases. (likely just part of data config and ViTConfig)
 
 
 # Config classes here are very roughly following the format of Tensorflow Model Garden: https://www.tensorflow.org/guide/model_garden#training_framework
@@ -104,6 +107,8 @@ class VideoMAETaskConfig:
     # loss = alpha * -(pearson correlation) + (1- alpha) * mean squared error. Alpha=1 is -correlation loss,
     # alpha = 0 is mse loss.
     alpha: float = 0.5
+    # Name of model in registry to use.
+    model_name: Optional[str] = None
 
 
 @dataclass
