@@ -267,8 +267,7 @@ class MaskedAutoencoderViT(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def initialize_mask(self, img_mask):
-        """Provide a mask of which pixels in the image are not present. True means value is masked out, False means it is present.
-
+        """
         img_mask: bool tensor of shape [H, W]
         """
         if img_mask is not None:
@@ -786,7 +785,8 @@ class MaskedAutoencoderViT(nn.Module):
                     cls_tokens, x = x[:, :1, :], x[:, 1:, :]
                 x = x.view([N, T, L, C])
                 x = x[:, :, self.patch_mask_indices]
-                x = x.reshape([N, T * self.n_mask_patches, C])
+                n_kept = self.patch_mask_indices.numel()
+                x = x.reshape([N, T * n_kept, C])
                 if self.cls_embed:
                     x = torch.cat((cls_tokens, x), dim=1)
 
