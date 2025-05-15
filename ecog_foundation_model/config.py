@@ -154,17 +154,7 @@ def create_video_mae_experiment_config_from_yaml(
 
 # Write the config to YAML
 def write_config_file_to_yaml(path: str, experiment_config):
-    def dataclass_to_dict(obj):
-        if is_dataclass(obj) and not isinstance(obj, type):
-            return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
-        elif isinstance(obj, list):
-            return [dataclass_to_dict(item) for item in obj]
-        elif isinstance(obj, dict):
-            return {key: dataclass_to_dict(value) for key, value in obj.items()}
-        else:
-            return obj
-
-    config_dict = dataclass_to_dict(experiment_config)
+    config_dict = asdict(experiment_config)
 
     with open(path, "w") as f:
         yaml.safe_dump(config_dict, f, sort_keys=False)
