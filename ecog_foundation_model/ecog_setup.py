@@ -1,3 +1,4 @@
+from dataclasses import asdict
 import torch
 import subprocess
 from importlib.metadata import version, PackageNotFoundError
@@ -38,6 +39,8 @@ def create_model(config: VideoMAEExperimentConfig):
         pct_masks_to_decode=config.video_mae_task_config.pct_masks_to_decode,
         proj_drop=model_config.proj_drop,
         drop_path=model_config.drop_path,
+        data_mean=config.ecog_data_config.data_mean,
+        data_std=config.ecog_data_config.data_std,
     )
     return model
 
@@ -71,10 +74,11 @@ def get_ecog_model_version():
 
 
 class CheckpointManager:
-    def __init__(self, model, optimizer=None, config=None):
+    def __init__(self, model, optimizer=None, config=None, lr_scheduler=None):
         self.model = model
         self.optimizer = optimizer
         self.config = config
+        self.lr_scheduler = lr_scheduler
 
     def save(self, path, tags=None):
         # Remove any left over image masks before saving.
@@ -87,7 +91,9 @@ class CheckpointManager:
         if self.optimizer:
             checkpoint["optimizer_state_dict"] = self.optimizer.state_dict()
         if self.config:
-            checkpoint["model_config"] = self.config.__dict__
+            checkpoint["model_config"] = asdict(self.config)
+        if self.lr_scheduler:
+            checkpoint["lr_scheduler_state_dict"] = self.lr_scheduler.state_dict()
         if tags:
             checkpoint["tags"] = tags
 
@@ -105,6 +111,8 @@ class CheckpointManager:
         # 2. Optimizer (optional)
         if self.optimizer and "optimizer_state_dict" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        if self.lr_scheduler and "lr_scheduler_state_dict" in checkpoint:
+            self.lr_scheduler.load_state_dict(checkpoint["lr_scheduler_state_dict"])
 
         # 3. Version check
         saved_version = checkpoint.get("ecog_model_version", "unknown")

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, fields, field, is_dataclass, asdict
 import yaml
-from typing import Optional
+from typing import Optional, Sequence
 
 # TODO: reduce this file to just the necessary pieces for all use-cases. (likely just part of data config and ViTConfig)
 
@@ -35,6 +35,10 @@ class ECoGDataConfig:
     shuffle: bool = False
     # The maximum number of files to sample from at once. Limited by RAM.
     max_open_files: int = 10
+    # The mean of the input data.
+    data_mean: float | Sequence[float] = 0.0
+    # The std of the input data.
+    data_std: float | Sequence[float] = 1.0
 
 
 @dataclass
@@ -154,17 +158,7 @@ def create_video_mae_experiment_config_from_yaml(
 
 # Write the config to YAML
 def write_config_file_to_yaml(path: str, experiment_config):
-    def dataclass_to_dict(obj):
-        if is_dataclass(obj) and not isinstance(obj, type):
-            return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
-        elif isinstance(obj, list):
-            return [dataclass_to_dict(item) for item in obj]
-        elif isinstance(obj, dict):
-            return {key: dataclass_to_dict(value) for key, value in obj.items()}
-        else:
-            return obj
-
-    config_dict = dataclass_to_dict(experiment_config)
+    config_dict = asdict(experiment_config)
 
     with open(path, "w") as f:
         yaml.safe_dump(config_dict, f, sort_keys=False)

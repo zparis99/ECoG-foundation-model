@@ -19,6 +19,8 @@ from einops import rearrange
 import copy
 from ecog_foundation_model.mae_st_util import video_vit
 
+from typing import Sequence
+
 
 def pearson_correlation(x1, x2):
     """Compute pearson correlation between x1 and x2.
@@ -62,6 +64,8 @@ class MaskedAutoencoderViT(nn.Module):
         pct_masks_to_decode=1,
         proj_drop=0.0,
         drop_path=0.0,
+        data_mean: float | Sequence[float] = 0.0,
+        data_std: float | Sequence[float] = 1.0,
         **kwargs,
     ):
         """Initialize a Masked Autoencoder with Vision Transformer backbone for video processing.
@@ -97,6 +101,14 @@ class MaskedAutoencoderViT(nn.Module):
             pct_masks_to_decode (float, optional): Percentage of masked patches to decode. Defaults to 1.
             proj_drop (float, optional): Probability of drop out in projection layer of attention blocks.
             drop_path (float, optional): Probability of drop path in attention blocks.
+            data_mean (float or sequence of floats, optional):
+                Per-channel dataset mean to subtract from input before encoding.
+                If a single float is provided, it’s applied to all channels.
+                Defaults to `0.0`.
+            data_std (float or sequence of floats, optional):
+                Per-channel dataset standard deviation to divide input by after subtracting the mean.
+                If a single float is provided, it’s applied to all channels.
+                Defaults to `1.0`.
             **kwargs: Additional arguments passed to parent class.
 
         The model architecture consists of:
@@ -121,8 +133,6 @@ class MaskedAutoencoderViT(nn.Module):
         self.pct_masks_to_decode = pct_masks_to_decode
         self.patch_size = patch_size
 
-        self.masked_input_norm = video_vit.MaskedBatchNorm(in_chans)
-
         self.patch_embed = patch_embed(
             img_size,
             patch_size,
@@ -134,6 +144,15 @@ class MaskedAutoencoderViT(nn.Module):
         num_patches = self.patch_embed.num_patches
         input_size = self.patch_embed.input_size
         self.input_size = input_size
+
+        # ——— register the dataset mean & std so they follow .to(device), .eval(), etc.
+        mean = torch.as_tensor(data_mean, dtype=torch.float32)
+        std = torch.as_tensor(data_std, dtype=torch.float32)
+        # reshape so (C,) → (1,C,1,1,1) for imgs of shape [N,C,T,H,W]
+        mean = mean.view(1, -1, *([1] * (len(self.patch_embed.input_size))))
+        std = std.view(1, -1, *([1] * (len(self.patch_embed.input_size))))
+        self.register_buffer("data_mean", mean)
+        self.register_buffer("data_std", std)
 
         if self.cls_embed:
             self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
@@ -731,9 +750,6 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
-    def forward_input_norm(self, x):
-        return self.masked_input_norm(x, self.img_mask)
-
     def forward(
         self,
         imgs,
@@ -744,7 +760,8 @@ class MaskedAutoencoderViT(nn.Module):
         cls_forward=False,
         alpha=0.5,
     ):
-        imgs = self.masked_input_norm(imgs, self.img_mask)
+        # ——— normalize by the global dataset stats
+        imgs = (imgs - self.data_mean) / self.data_std
         # TODO: Break this out and test.
         if forward_features:
             # embed patches
