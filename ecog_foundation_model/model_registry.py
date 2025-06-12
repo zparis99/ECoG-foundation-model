@@ -27,13 +27,13 @@ def register_model(name=None):
 @register_model()
 def patch_dim_2_small():
     return ViTConfig(
-        dim=128,
+        dim=64,
         decoder_embed_dim=64,
         mlp_ratio=4.0,
         depth=6,
         decoder_depth=4,
-        num_heads=4,
-        decoder_num_heads=4,
+        num_heads=2,
+        decoder_num_heads=2,
         patch_size=2,
         frame_patch_size=16,
         use_cls_token=False,

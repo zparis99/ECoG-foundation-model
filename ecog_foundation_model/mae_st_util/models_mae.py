@@ -121,8 +121,6 @@ class MaskedAutoencoderViT(nn.Module):
         self.pct_masks_to_decode = pct_masks_to_decode
         self.patch_size = patch_size
 
-        self.masked_input_norm = video_vit.MaskedBatchNorm(in_chans)
-
         self.patch_embed = patch_embed(
             img_size,
             patch_size,
@@ -731,9 +729,6 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
-    def forward_input_norm(self, x):
-        return self.masked_input_norm(x, self.img_mask)
-
     def forward(
         self,
         imgs,
@@ -744,7 +739,6 @@ class MaskedAutoencoderViT(nn.Module):
         cls_forward=False,
         alpha=0.5,
     ):
-        imgs = self.masked_input_norm(imgs, self.img_mask)
         # TODO: Break this out and test.
         if forward_features:
             # embed patches
