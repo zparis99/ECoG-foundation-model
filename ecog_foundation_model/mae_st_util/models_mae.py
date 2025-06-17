@@ -693,7 +693,8 @@ class MaskedAutoencoderViT(nn.Module):
 
         # Calculate correlation of masked patches
         B, L, C = target.shape
-        expanded_mask = mask.repeat_interleave(C, axis=1).view(B, L, C).bool()
+        # Masked patches have a 1 in their mask so flip the sign.
+        expanded_mask = ~(mask.repeat_interleave(C, axis=1).view(B, L, C).bool())
         masked_imgs = target.masked_fill(expanded_mask, torch.nan)
         masked_pred = pred.masked_fill(expanded_mask, torch.nan)
         correlation = pearson_correlation(
