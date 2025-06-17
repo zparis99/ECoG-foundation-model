@@ -117,9 +117,7 @@ def preprocess_and_normalize_neural_data(
             if non_nan_data.size > 0:
                 mean = np.mean(non_nan_data)
                 std = np.std(non_nan_data)
-                if (
-                    std > np.finfo(dtype).eps
-                ):  # Avoid division by zero for constant signals
+                if std != 0:
                     normalized_signal[band_idx, electrode_idx] = (
                         data_to_normalize - mean
                     ) / std
