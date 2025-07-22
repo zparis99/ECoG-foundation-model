@@ -739,6 +739,7 @@ class MaskedAutoencoderViT(nn.Module):
         global_pool=True,
         cls_forward=False,
         alpha=0.5,
+        return_intermediate_encoder_latent=None,
     ):
         # TODO: Break this out and test.
         if forward_features:
@@ -786,8 +787,14 @@ class MaskedAutoencoderViT(nn.Module):
                     x = torch.cat((cls_tokens, x), dim=1)
 
             # apply Transformer blocks
-            for blk in self.blocks:
+            for i, blk in enumerate(self.blocks):
                 x = blk(x)
+                # Allow for early breaking out if we want to use intermediate layers later.
+                if (
+                    return_intermediate_encoder_latent is not None
+                    and i == return_intermediate_encoder_latent
+                ):
+                    break
 
             if global_pool:
                 if self.cls_embed:
