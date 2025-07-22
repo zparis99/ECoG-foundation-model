@@ -101,7 +101,7 @@ class CheckpointManager:
             logger.debug(f"[CheckpointManager] 🏷 Tags: {tags}")
 
     def load(self, path, strict=True, required_tags=None):
-        checkpoint = torch.load(path, map_location="cpu", weights_only=True)
+        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
 
         # 1. Load model weights
         self.model.load_state_dict(checkpoint["model_state_dict"], strict=strict)

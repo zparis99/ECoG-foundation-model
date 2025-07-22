@@ -121,8 +121,6 @@ class MaskedAutoencoderViT(nn.Module):
         self.pct_masks_to_decode = pct_masks_to_decode
         self.patch_size = patch_size
 
-        self.masked_input_norm = video_vit.MaskedBatchNorm(in_chans)
-
         self.patch_embed = patch_embed(
             img_size,
             patch_size,
@@ -695,7 +693,8 @@ class MaskedAutoencoderViT(nn.Module):
 
         # Calculate correlation of masked patches
         B, L, C = target.shape
-        expanded_mask = mask.repeat_interleave(C, axis=1).view(B, L, C).bool()
+        # Masked patches have a 1 in their mask so flip the sign.
+        expanded_mask = ~(mask.repeat_interleave(C, axis=1).view(B, L, C).bool())
         masked_imgs = target.masked_fill(expanded_mask, torch.nan)
         masked_pred = pred.masked_fill(expanded_mask, torch.nan)
         correlation = pearson_correlation(
@@ -731,9 +730,6 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
-    def forward_input_norm(self, x):
-        return self.masked_input_norm(x, self.img_mask)
-
     def forward(
         self,
         imgs,
@@ -743,8 +739,8 @@ class MaskedAutoencoderViT(nn.Module):
         global_pool=True,
         cls_forward=False,
         alpha=0.5,
+        return_intermediate_encoder_latent=None,
     ):
-        imgs = self.masked_input_norm(imgs, self.img_mask)
         # TODO: Break this out and test.
         if forward_features:
             # embed patches
@@ -791,8 +787,14 @@ class MaskedAutoencoderViT(nn.Module):
                     x = torch.cat((cls_tokens, x), dim=1)
 
             # apply Transformer blocks
-            for blk in self.blocks:
+            for i, blk in enumerate(self.blocks):
                 x = blk(x)
+                # Allow for early breaking out if we want to use intermediate layers later.
+                if (
+                    return_intermediate_encoder_latent is not None
+                    and i == return_intermediate_encoder_latent
+                ):
+                    break
 
             if global_pool:
                 if self.cls_embed:
